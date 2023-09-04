@@ -2,7 +2,7 @@
 
 Simple starter kit for the backend that can also be used as is to create a project management system similar to figma(without realtime collaboration right now) with supabase and cloudflare workers.
 
-All infrastructure is defined as code in the project. The starter sql is present in `starter.sql` and the worker code is in `src/index.js`. A sample for the wrangler.toml is present in `wrangler.sample.toml`.
+All infrastructure is defined as code in the project. The starter sql is present in `starter.sql`, the worker code is in `cf-worker/src/worker.ts` and a sample for the wrangler.toml is present in `wrangler.sample.toml`.
 
 The starter sql creates the tables, functions, triggers, and policies required for the project. The worker code is a simple proxy to supabase with some additional functionality for user assets and avatar and poster iamges.
 
@@ -10,6 +10,8 @@ The cloudflare worker project can be used by using it as a template, by copying 
 Using it as a dependency or a submodule makes it possible to upgrade the worker code easily, but makes it harder to modify the worker code to suit your needs.
 
 Note: This is a very simple project and could serve as a starting point. But this in no way is a complete production ready system, and requires considerable work on the frontend.
+
+Note: Good knowledge of postgreSQL, supabase and cloudflare workers is required to use this project.
 
 ## Database
 
@@ -88,13 +90,12 @@ const supabase = createClient(
 
 All the supabase API works as is, but the worker adds some additional functionality, like custom domains and removing the need to pass the anonymous key in the frontend. It could simply be an empty string if defined in wrangler.toml
 
+Here's an example for making a direct request, but for most cases directly using supabase client will be enough.
 ```js
 const response = await fetch(WORKER_URL + '/rest/v1/projects?select=*&limit=1', {
     headers: {
-        'Authorization': 'Bearer ' + session.access_token,
-        'Content-Type': file.type
+        'Authorization': 'Bearer ' + session.access_token
     },
-    method: 'GET'
 })
 ```
 
