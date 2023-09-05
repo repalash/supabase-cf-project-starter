@@ -28,11 +28,15 @@ Here is the setup checklist, more details are below.
 
 - [ ] Create a supabase project
 - [ ] Run starter SQL script
-- [ ] Create a wrangler.toml file for the worker
+- [ ] Create a wrangler.toml file for the worker from wrangler.sample.toml
+- [ ] Set name and route in wrangler.toml, comment route and env.staging if not required.
 - [ ] Create a bucket for user assets, update wrangler.toml
 - [ ] Map the bucket to a domain, update wrangler.toml
-- [ ] Set the supabase url, anon token and jwt secret in wrangler.toml
-- [ ] Deploy the worker
+- [ ] Set cors policy for the bucket
+- [ ] Set the supabase url, anon token in wrangler.toml
+- [ ] Deploy the worker for the first time
+- [ ] Create a new .dev.vars file with the jwt secret for local development
+- [ ] Set the jwt secret on deployment(s)
 - [ ] Use the worker endpoint with supabase in the frontend.
 
 ### Supabase setup
@@ -44,13 +48,19 @@ Press `Run` to create the tables, functions, triggers, and policies.
 
 ### Worker setup
 
+Move into the `cf-worker` directory
+```sh
+cd cf-worker
+```
+
 Copy wrangler.sample.toml to wrangler.toml
 ```sh
 cp wrangler.sample.toml wrangler.toml
 ```
 
-Set the name of the worker in wrangler.toml
+Set the name, account_id of the worker in wrangler.toml
 ```toml
+account_id = "<cloudflare account id>"
 name = "<worker name>"
 ```
 
@@ -61,19 +71,63 @@ npx wrangler r2 bucket create <bucket-name>
 ```toml
 [[r2_buckets]]
 binding = "USER_ASSETS_BUCKET_1"
-bucket_name = "<bucket_name>"
+bucket_name = "<bucket name>"
 ```
+
+Next [add a cors policy for the bucket](https://developers.cloudflare.com/r2/buckets/cors/#add-cors-policies-from-the-dashboard) to be able to access the files from the frontend.
+Here's a sample for allowing all domains: 
+```json
+[
+  {
+    "AllowedOrigins": [ "*" ],
+    "AllowedMethods": [ "GET" ]
+  }
+]
+```
+Set `*` to the domain for the frontend, if only one domain is required.
 
 Map the bucket to a domain or enable public access from the cloudflare portal, then set `USER_ASSET_BASE_URL_1` in wrangler.toml to the domain or bucket url like:
 ```toml
 USER_ASSET_BASE_URL_1 = "https://cdn1.<your domain>.com"
 ```
 
-Set the `SUPABASE_URL`, `SUPABASE_ANON_TOKEN` and `SUPABASE_JWT_SECRET` variables in wrangler.toml to the url and jwt secret in the supabase project.
+Set the `SUPABASE_URL`, `SUPABASE_ANON_TOKEN` variables in wrangler.toml to the url and jwt secret in the supabase project.
 ```toml
 SUPABASE_URL = "https://<supabase project id>.supabase.co"
 SUPABASE_ANON_TOKEN = "<supabase anonymous token>"
-SUPABASE_JWT_SECRET = "<jwt secret for auth>"
+```
+
+`SUPABASE_JWT_SECRET` has to be set as an encrypted value in the cloudflare dashboard or via cli(after first deployment).
+
+It has to be set for every environment(like staging)
+
+To set it via cli (do this after first deployment), run:
+```sh
+wrangler secret put SUPABASE_JWT_SECRET
+wrangler secret put SUPABASE_JWT_SECRET --env staging
+```
+
+For local development create a `.dev.vars` with the secret:
+```sh
+echo "SUPABASE_JWT_SECRET=<jwt_secret>" > .dev.vars
+```
+
+## Test the worker locally 
+    
+```sh
+npm run start # same as wrangler dev
+```
+
+## Deploy the worker 
+
+Deploy to staging
+```sh
+npm run deploy # same as wrangler deploy --env staging
+```
+
+Deploy to prod
+```sh
+npm run deploy:prod # same as wrangler deploy
 ```
 
 ## Usage in frontend

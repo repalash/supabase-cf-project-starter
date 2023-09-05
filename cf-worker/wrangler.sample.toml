@@ -1,7 +1,8 @@
-name = "" # todo: name
+account_id = "<cloudflare account id>"
+name = "" # todo: project name
 main = "src/worker.ts"
 compatibility_date = "2023-06-28"
-
+route = "https://api.<domain name>.com/*"
 usage_model = "bundled" # optional, default is "unbound" for paid and "bundled" for free plans
 
 # Variable bindings. These are arbitrary, plaintext strings (similar to environment variables)
@@ -12,9 +13,27 @@ usage_model = "bundled" # optional, default is "unbound" for paid and "bundled" 
 SUPABASE_URL = "https://<supabase project id>.supabase.co"
 USER_ASSET_BASE_URL_1 = "https://cdn1.<domain name>.com"
 SUPABASE_ANON_TOKEN = ""
-SUPABASE_JWT_SECRET = "<supabase auth jwt secret>" # set this as a encrypted value in the cloudflare dashboard and comment here.
 USER_ASSET_MAX_SIZE = "200000000" # 200MB
 POSTER_ASSET_MAX_SIZE = "50000000" # 50MB
+
+[[r2_buckets]]
+binding = "USER_ASSETS_BUCKET_1"
+bucket_name = "<bucket-name>"
+
+[env.staging]
+workers_dev = true
+
+[env.staging.vars]
+# MY_VARIABLE = "production_value"
+SUPABASE_URL = "https://<supabase project id>.supabase.co"
+USER_ASSET_BASE_URL_1 = "https://cdn1.<domain name>.com"
+SUPABASE_ANON_TOKEN = ""
+USER_ASSET_MAX_SIZE = "200000000" # 200MB
+POSTER_ASSET_MAX_SIZE = "50000000" # 50MB
+
+[[env.staging.r2_buckets]]
+binding = "USER_ASSETS_BUCKET_1"
+bucket_name = "<bucket-name>"
 
 # Bind a KV Namespace. Use KV as persistent storage for small key-value pairs.
 # Docs: https://developers.cloudflare.com/workers/runtime-apis/kv
@@ -24,9 +43,9 @@ POSTER_ASSET_MAX_SIZE = "50000000" # 50MB
 
 # Bind an R2 Bucket. Use R2 to store arbitrarily large blobs of data, such as files.
 # Docs: https://developers.cloudflare.com/r2/api/workers/workers-api-usage/
-[[r2_buckets]]
-binding = "USER_ASSETS_BUCKET_1"
-bucket_name = "<bucket-name>"
+# [[r2_buckets]]
+# binding = "MY_BUCKET"
+# bucket_name = "my-bucket"
 
 # Bind a Queue producer. Use this binding to schedule an arbitrary task that may be processed later by a Queue consumer.
 # Docs: https://developers.cloudflare.com/queues/get-started

@@ -1,5 +1,7 @@
 dist
 
+*.vars
+
 # Logs
 *.log
 npm-debug.log*
