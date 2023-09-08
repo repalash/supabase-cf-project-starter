@@ -136,7 +136,7 @@ Pass the worker url directly into the supabase `createClient` function.
 ```js
 const supabase = createClient(
   'https://<worker name>.<your domain>.workers.dev', // or your custom domain mapped to the worker
-  '<supabase anonymous key>' // this can be an empty string if defined in wrangler.toml
+  '0' // this can be '0' because defined in wrangler.toml
 )
 ```
 

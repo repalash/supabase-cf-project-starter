@@ -7,6 +7,8 @@ export class SupabaseWrapper{
 		// Proxy to Supabase
 		const headers = new Headers(this.request.headers);
 		headers.set('apikey', this.env.SUPABASE_ANON_TOKEN)
+		const auth = headers.get('Authorization')
+		if(!auth || auth.trim()=== 'Bearer' || auth === 'Bearer 0') headers.set('Authorization', 'Bearer ' + this.env.SUPABASE_ANON_TOKEN)
 		const res = await fetch(this.request.url.replace(url.origin, this.env.SUPABASE_URL), {
 			body: this.request.body,
 			headers,
@@ -24,11 +26,11 @@ export class SupabaseWrapper{
 				"iat": Math.floor(Date.now() / 1000),
 				"exp": Math.floor(Date.now() / 1000) + 60 * 60,
 			}
-			token = await createJWTToken(serviceRolePayload, this.env.SUPABASE_JWT_SECRET);
+			token = 'Bearer ' + await createJWTToken(serviceRolePayload, this.env.SUPABASE_JWT_SECRET);
 		}
-
+		if(token.trim() === 'Bearer' || token === 'Bearer 0') token = 'Bearer ' + this.env.SUPABASE_ANON_TOKEN
 		const headers: any = {
-			'Authorization': 'Bearer ' + (token || this.request.headers.get('Authorization') || ''),
+			'Authorization': token,
 			'apikey': this.env.SUPABASE_ANON_TOKEN
 		}
 		if(cType && cType.length) headers['Content-Type'] = cType;
