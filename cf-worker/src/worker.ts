@@ -43,7 +43,7 @@ export interface Env {
 }
 
 export function fixPath(path: string){
-	return path.replace(/\/$/, '').replace(/^\//, '').replace(/^\./, '')
+	return path.replace(/\/$/, '').replace(/^\//, '').replace(/^\.\./, '')
 }
 export function getAssetType(url: URL, request: Request){
 	return url.searchParams.get('type') || request.headers.get('content-type') || 'application/octet-stream';
@@ -72,7 +72,7 @@ async function handleRequest_(request: Request, env: Env) {
 			const r2 = new R2Wrapper(env.USER_ASSETS_BUCKET_1)
 
 			if (action === 'user_asset') {
-				const assetPath = fixPath(pathE.slice(4).join('/'));
+				const assetPath = fixPath(pathE.slice(4).join('/')).replace(/^\./, '');
 				const uaOps = new UserAssetOps(r2, env, request, db, uid, assetPath);
 
 				response =

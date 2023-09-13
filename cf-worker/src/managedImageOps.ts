@@ -28,7 +28,7 @@ export class ManagedImageOps{
 		const isProject = this.assetPath.startsWith('.projects/');
 		const isProfile = this.assetPath.startsWith('.profiles/');
 
-		const assetId = isProject || isProfile ? this.assetPath.split('/')[1] : this.assetPath;
+		const assetId = (isProject || isProfile) ? this.assetPath.split('/')[1] : this.assetPath;
 
 		const asset =
 			isProject ? await this.db.getProject(assetId) :
@@ -65,7 +65,6 @@ export class ManagedImageOps{
 			return updateAssetResponse;
 		}
 
-
 		try{
 			await this.r2.put(assetKey, this.request);
 		}catch(e){
@@ -78,7 +77,7 @@ export class ManagedImageOps{
 			throw e;
 		}
 
-		await this.r2.delete(asset.assetUrl).catch(e=>console.error(e));
+		if(!!asset.assetUrl) await this.r2.delete(asset.assetUrl).catch(e=>console.error(e));
 
 		return updateAssetResponse;
 	}
