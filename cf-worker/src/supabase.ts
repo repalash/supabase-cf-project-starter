@@ -83,11 +83,11 @@ export class SupabaseWrapper{
 	}
 
 	async updateProfile(ops: {
-		profile_id: string,
 		user_full_name?: string,
 		user_username?: string,
 		user_website?: string,
 		user_avatar_url?: string,
+		user_bio?: string,
 	}) {
 		return this.rpcPost('update_profile', ops);
 	}

@@ -460,7 +460,8 @@ create or replace function public.update_profile(
     user_full_name text default null,
     user_username text default null,
     user_website text default null,
-    user_avatar_url text default null
+    user_avatar_url text default null,
+    user_bio text default null
 )
     returns profiles as
 $$
@@ -471,7 +472,8 @@ begin
     set full_name = coalesce(user_full_name, full_name),
         username  = coalesce(user_username, username),
         website   = coalesce(user_website, website),
-        avatar_url = coalesce(user_avatar_url, avatar_url)
+        avatar_url = coalesce(user_avatar_url, avatar_url),
+        bio = coalesce(user_bio, bio)
     where id = auth.uid()
     returning * into profile;
     return profile;

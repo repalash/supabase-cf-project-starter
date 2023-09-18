@@ -20,7 +20,7 @@ export class ManagedImageOps{
 	private async updateProject({isProject, isProfile, assetId, assetUrl}:TAsset) {
 		let updateAssetResponse =
 			isProject ? await this.db.updateProject({project_id: assetId, project_poster_url: assetUrl}) :
-				isProfile ? await this.db.updateProfile({profile_id: assetId, user_avatar_url: assetUrl}) :
+				isProfile ? await this.db.updateProfile({user_avatar_url: assetUrl}) :
 					await this.db.updateUserAsset({asset_name: assetId, asset_poster_url: assetUrl});
 		return updateAssetResponse;
 	}
