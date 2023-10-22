@@ -29,21 +29,23 @@ create table public.profiles
 -- Projects will also have a jsonb column for storing project data.
 create table public.projects
 (
-    id           uuid                                         not null primary key default extensions.uuid_generate_v4(),
-    slug         text unique                                  not null,
-    updated_at   timestamp with time zone                     not null             default now(),
-    created_at   timestamp with time zone                     not null             default now(),
-    name         text                                         not null             default 'Untitled Project',
-    description  text,
-    is_private   boolean                                      not null             default true,
-    is_template  boolean                                      not null             default false,
-    owner_id     uuid references auth.users on delete cascade not null,
-    editors      uuid[]                                       not null             default '{}'::uuid[],
-    viewers      uuid[]                                       not null             default '{}'::uuid[],
-    project_data jsonb                                        not null             default '{}'::jsonb,
-    tags         text[]                                                            default '{}'::text[],
-    poster_url   text,
-    user_editing uuid                                         references auth.users on delete set null,
+    id             uuid                                         not null primary key default extensions.uuid_generate_v4(),
+    slug           text unique                                  not null,
+    updated_at     timestamp with time zone                     not null             default now(),
+    created_at     timestamp with time zone                     not null             default now(),
+    deleted_at     timestamp with time zone                                          default null,
+    name           text                                         not null             default 'Untitled Project',
+    description    text,
+    is_private     boolean                                      not null             default true,
+    is_template    boolean                                      not null             default false,
+    owner_id       uuid references auth.users on delete cascade not null,
+    owner_username text                                                              default null,
+    editors        uuid[]                                       not null             default '{}'::uuid[],
+    viewers        uuid[]                                       not null             default '{}'::uuid[],
+    project_data   jsonb                                        not null             default '{}'::jsonb,
+    tags           text[]                                                            default '{}'::text[],
+    poster_url     text,
+    user_editing   uuid                                         references auth.users on delete set null,
     user_editing_at timestamp with time zone,
 
     constraint slug_length check (char_length(slug) >= 3)
@@ -104,13 +106,13 @@ create or replace function public.handle_new_auth_user()
     returns trigger as
 $$
 begin
-    insert into public.profiles (id, full_name, avatar_url)
-    values (new.id, new.raw_user_meta_data ->> 'full_name', new.raw_user_meta_data ->> 'avatar_url');
+    insert into public.profiles (id, full_name, username, avatar_url)
+    values (new.id, new.raw_user_meta_data ->> 'full_name', new.raw_user_meta_data ->> 'username',new.raw_user_meta_data ->> 'avatar_url');
     return new;
 end;
 $$ language plpgsql security definer;
 
--- Create trigger to automatically create a new project version when a project is updated.
+-- Trigger to automatically create a new project version when a project is updated.
 create or replace function public.handle_project_updated()
     returns trigger as
 $$
@@ -124,15 +126,46 @@ begin
 end;
 $$ language plpgsql security definer;
 
+-- Trigger to automatically update the owner_username column when the owner_id is updated.
+create or replace function public.handle_project_owner_updated()
+    returns trigger as
+$$
+begin
+    if new.owner_id = old.owner_id then
+        return new;
+    end if;
+    update projects
+    set owner_username = (select username from profiles where id = new.owner_id)
+    where id = new.id;
+    return new;
+end;
+$$ language plpgsql security definer;
+
+-- Trigger to automatically update the owner_username column when the username updates in profiles.
+create or replace function public.handle_profile_username_updated()
+    returns trigger as
+$$
+begin
+    if new.username = old.username then
+        return new;
+    end if;
+    update projects
+    set owner_username = new.username
+    where owner_id = new.id;
+    return new;
+end;
+$$ language plpgsql security definer;
+
 -- endregion
 
 -- region Access management functions
 
+-- todo: remove deleted_at check and put in frontend
 create or replace function public.can_user_access_project(project projects)
     returns boolean as
 $$
 begin
-    return (project.is_private = false or auth.uid() = project.owner_id or auth.uid() = any (project.editors) or
+    return ((project.is_private = false and project.deleted_at is null) or auth.uid() = project.owner_id or auth.uid() = any (project.editors) or
             auth.uid() = any (project.viewers));
 end;
 $$ language plpgsql security definer;
@@ -171,14 +204,15 @@ create or replace function public.create_project()
 $$
 declare
     project      projects;
+    username     text := (select username from profiles where id = auth.uid());
     project_slug text := '';
 begin
     while project_slug = '' or exists(select 1 from projects where slug = project_slug)
         loop
             project_slug := substr(md5(random()::text), 0, 8);
         end loop;
-    insert into projects (slug, owner_id)
-    values (project_slug, auth.uid())
+    insert into projects (slug, owner_id, owner_username)
+    values (project_slug, auth.uid(), username)
     returning * into project;
     return project;
 end;
@@ -313,17 +347,54 @@ begin
 end;
 $$ language plpgsql security definer;
 
+-- Delete a project
+
+create or replace function public.delete_project(
+    project_id uuid
+)
+    returns projects as
+$$
+declare
+    project projects;
+begin
+    update projects
+    set deleted_at = now()
+    where id = project_id
+      and owner_id = auth.uid()
+      and deleted_at is null
+    returning * into project;
+    return project;
+end;
+$$ language plpgsql security definer;
+
+-- Full Delete. This can have user_assets linked in the project_data, so that needs to be cleared.
+-- create or replace function public.full_delete_project(
+--     project_id uuid
+-- )
+--     returns projects as
+-- $$
+-- declare
+--     project projects;
+-- begin
+--     delete from projects
+--     where id = project_id
+--       and owner_id = auth.uid()
+--     returning * into project;
+--     return project;
+-- end;
+-- $$ language plpgsql security definer;
+
 -- endregion
 
 -- region User Asset management functions
 
 -- Function to create a new asset
 create or replace function public.create_user_asset(
---     asset_project_id uuid default null,
     asset_name text,
     asset_asset_url text,
     asset_asset_type text,
     asset_size bigint,
+    asset_project_id uuid default null,
     asset_asset_data jsonb default '{}'::jsonb,
     asset_is_private boolean default true,
     asset_is_resource boolean default false,
@@ -340,9 +411,9 @@ begin
     end if;
 
     -- Check if project exists and user has access
---     if asset_project_id is not null and not exists(select 1 from projects where id = asset_project_id and (owner_id = auth.uid() or auth.uid() = any (editors))) then
---         raise exception 'Project does not exist or user does not have write access to project';
---     end if;
+    if asset_project_id is not null and not exists(select 1 from projects where id = asset_project_id and (owner_id = auth.uid() or auth.uid() = any (editors))) then
+        raise exception 'Project does not exist or user does not have write access to project';
+    end if;
 
     -- Check if name is unique for this user
     if exists(select 1 from user_assets where name = asset_name and owner_id = auth.uid()) then
@@ -354,8 +425,8 @@ begin
         raise exception 'Asset url is not unique';
     end if;
 
-    insert into user_assets (/*project_id,*/ name, asset_url, asset_type, asset_data, is_private, is_resource, size, poster_url, owner_id)
-    values (/*asset_project_id,*/ asset_name, asset_asset_url, asset_asset_type, asset_asset_data, asset_is_private, asset_is_resource, asset_size, asset_poster_url, auth.uid())
+    insert into user_assets (project_id, name, asset_url, asset_type, asset_data, is_private, is_resource, size, poster_url, owner_id)
+    values (asset_project_id, asset_name, asset_asset_url, asset_asset_type, asset_asset_data, asset_is_private, asset_is_resource, asset_size, asset_poster_url, auth.uid())
     returning * into asset;
     return asset;
 end;
@@ -434,7 +505,9 @@ begin
 end;
 $$ language plpgsql security definer;
 
--- Function to delete a user asset
+-- Function to delete a user asset.
+-- TODO: only allow the backend to call this, not the user, and see other functions also
+-- TODO: or create webhook to delete file on cloudflare r2 when a row is deleted, this will be useful with project delete also
 create or replace function public.delete_user_asset(
     asset_name text
 )
@@ -575,6 +648,18 @@ create trigger handle_updated_at_user_assets
     on user_assets
     for each row
 execute procedure extensions.moddatetime(updated_at);
+
+create trigger handle_owner_update_projects
+    after update
+    on projects
+    for each row
+execute procedure public.handle_project_owner_updated();
+
+create trigger handle_username_update_profiles
+    after update
+    on profiles
+    for each row
+execute procedure public.handle_profile_username_updated();
 
 -- endregion
 

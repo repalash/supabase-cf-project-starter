@@ -76,7 +76,7 @@ async function handleRequest_(request: Request, env: Env) {
 				const uaOps = new UserAssetOps(r2, env, request, db, uid, assetPath);
 
 				response =
-					method === 'PUT' ? await uaOps.create(url.searchParams.get('type')) :
+					method === 'PUT' ? await uaOps.create(url.searchParams.get('type'), url.searchParams.get('project_id')||null) :
 					method === 'DELETE' ? await uaOps.delete() :
 					method === 'GET' ? await uaOps.get() :
 					method === 'POST' ? await uaOps.update() :

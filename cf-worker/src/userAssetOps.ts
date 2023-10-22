@@ -38,18 +38,21 @@ export class UserAssetOps{
 		return assetSize;
 	}
 
-	async create(assetType?: string|null) {
+	async create(assetType?: string|null, projectId?: string|null) {
 		assetType = assetType || this.request.headers.get('content-type') || 'application/octet-stream'
+		projectId = projectId || this.request.headers.get('project-id') || null
 
 		const assetSize = this.assetSize;
-		const assetKey = await createAssetKey(this.uid, this.assetPath);
+		const assetKey = await createAssetKey(projectId || this.uid, this.assetPath);
 		const assetUrl = userAssetKeyToUrl(assetKey, this.env);
-		const createAssetResponse = await this.db.createUserAsset({
+		const opts = {
 			asset_asset_type: assetType,
 			asset_asset_url: assetUrl,
 			asset_name: this.assetPath,
 			asset_size: assetSize,
-		});
+		}
+		if(projectId) (opts as any).asset_project_id = projectId;
+		const createAssetResponse = await this.db.createUserAsset(opts);
 		if (!createAssetResponse.ok) return createAssetResponse;
 
 		// upload file to r2 bucket

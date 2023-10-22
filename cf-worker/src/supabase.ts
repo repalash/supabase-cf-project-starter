@@ -116,6 +116,7 @@ export class SupabaseWrapper{
 		asset_asset_url: string,
 		asset_name: string,
 		asset_size: number,
+		asset_project_id?: string,
 	}){
 		return await this.rpcPost('create_user_asset', {
 			'asset_is_private': true,
