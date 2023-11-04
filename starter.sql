@@ -485,7 +485,7 @@ $$
 declare
     asset user_assets;
 begin
-    -- Check if user has permission to update asset only service_role
+    -- Check if user has permission to update asset only service_role. TODO: its not required since we are using security invoker
     if auth.role() != 'service_role' then
         raise exception 'User is not authenticated';
     end if;
@@ -503,12 +503,13 @@ begin
     returning * into asset;
     return asset;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security invoker;
 
--- Function to delete a user asset.
+-- Function to delete a user asset. Call as admin(from worker).
 -- TODO: only allow the backend to call this, not the user, and see other functions also
 -- TODO: or create webhook to delete file on cloudflare r2 when a row is deleted, this will be useful with project delete also
 create or replace function public.delete_user_asset(
+    asset_owner_id uuid,
     asset_name text
 )
     returns user_assets as
@@ -518,11 +519,12 @@ declare
 begin
     delete from user_assets
     where name = asset_name
-      and owner_id = auth.uid()
+      and owner_id = asset_owner_id
+--       and owner_id = auth.uid()
     returning * into asset;
     return asset;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security invoker;
 
 -- endregion
 

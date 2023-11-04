@@ -38,8 +38,8 @@ export class SupabaseWrapper{
 	}
 
 	async rpcPost(name: string, ops: any, admin = false) {
-		const createAssetUrl = this.env.SUPABASE_URL + '/rest/v1/rpc/' + name;
-		const res = await fetch(createAssetUrl, {
+		const url = this.env.SUPABASE_URL + '/rest/v1/rpc/' + name;
+		const res = await fetch(url, {
 			method: 'POST',
 			headers: await this.authHeaders('application/json', admin),
 			body: JSON.stringify(ops)
@@ -128,7 +128,7 @@ export class SupabaseWrapper{
 	}
 
 	async deleteUserAsset(ops: {asset_name: string}) {
-		return this.rpcPost('delete_user_asset', ops);
+		return this.rpcPost('delete_user_asset', ops, true);
 	}
 
 }
