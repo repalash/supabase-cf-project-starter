@@ -20,6 +20,7 @@ create table public.profiles
     website    text,
     is_private boolean                                               default false,
     bio        text                                                  default '',
+    plan       text                                        not null  default 'free',
     constraint username_length check (char_length(username) >= 3)
 );
 
