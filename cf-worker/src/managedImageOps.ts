@@ -16,7 +16,6 @@ export class ManagedImageOps{
 		public assetPath: string,
 	){}
 
-
 	private async updateProject({isProject, isProfile, assetId, assetUrl}:TAsset) {
 		let updateAssetResponse =
 			isProject ? await this.db.updateProject({project_id: assetId, project_poster_url: assetUrl}) :

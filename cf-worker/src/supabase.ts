@@ -14,7 +14,7 @@ export class SupabaseWrapper{
 			headers,
 			method: this.request.method
 		});
-		return res;
+		return res as any as Response;
 	}
 
 	async authHeaders(cType = '', admin = false){
@@ -44,7 +44,7 @@ export class SupabaseWrapper{
 			headers: await this.authHeaders('application/json', admin),
 			body: JSON.stringify(ops)
 		});
-		return res;
+		return res as any as Response;
 	}
 
 	async restGet(query: string){
@@ -53,7 +53,7 @@ export class SupabaseWrapper{
 			method: 'GET',
 			headers: await this.authHeaders()
 		})
-		return res;
+		return res as any as Response;
 	}
 
 	async getUserAsset(assetPath: string){

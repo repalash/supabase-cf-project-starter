@@ -21,6 +21,7 @@ create table public.profiles
     is_private boolean                                               default false,
     bio        text                                                  default '',
     plan       text                                        not null  default 'free',
+    plan_expiry timestamp with time zone                             default null,
     constraint username_length check (char_length(username) >= 3)
 );
 
@@ -555,6 +556,75 @@ begin
     return profile;
 end;
 $$ language plpgsql security definer;
+
+-- Function to update a user profile plan and expiry. This will be called from the worker, triggered by stripe webhook.
+create or replace function public.update_profile_plan(
+    user_email text,
+    user_plan text,
+    user_plan_expiry numeric -- in seconds
+)
+    returns profiles as
+$$
+declare
+    profile profiles;
+begin
+    -- Check if user has permission to update asset only service_role. TODO: make a new service role for stripe and use that
+    if auth.role() != 'service_role' then
+        raise exception 'User is not authenticated';
+    end if;
+
+    update profiles
+    set plan = user_plan,
+        plan_expiry = to_timestamp(user_plan_expiry)
+    where id = (select id from auth.users au where au.email = user_email)
+    returning * into profile;
+    return profile;
+end;
+$$ language plpgsql security definer; -- note that this is definer
+
+-- Function to update a user profile plan on expiry. sets the plan to free and expiry to null
+create or replace function public.expire_profile_plan(
+    user_email text,
+    if_current_plan text
+)
+    returns profiles as
+$$
+declare
+    profile profiles;
+begin
+    -- Check if user has permission to update asset only service_role. TODO: make a new service role for stripe and use that
+    if auth.role() != 'service_role' then
+        raise exception 'User is not authenticated';
+    end if;
+
+    update profiles
+    set plan = 'free',
+        plan_expiry = null
+    where id = (select id from auth.users au where au.email = user_email)
+      and plan = if_current_plan
+    returning * into profile;
+    return profile;
+end;
+$$ language plpgsql security definer;  -- note that this is definer
+
+-- function to get the email for a uid. used in worker to check the uid is valid or not
+create or replace function public.get_email_for_uid(
+    user_id uuid
+)
+    returns text as
+$$
+declare
+    email text;
+begin
+    -- Check if user has permission to query this. only service_role.
+    if auth.role() != 'service_role' then
+        raise exception 'User is not authenticated';
+    end if;
+
+    select au.email into email from auth.users au where id = user_id;
+    return email;
+end;
+$$ language plpgsql security definer ;
 
 -- endregion
 

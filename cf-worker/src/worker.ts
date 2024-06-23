@@ -13,6 +13,7 @@ import { SupabaseWrapper } from './supabase';
 import { UserAssetOps } from './userAssetOps';
 import { R2Wrapper } from './r2';
 import { ManagedImageOps } from './managedImageOps';
+import {handleCreateCheckoutSession, handleStripeWebhook} from "./stripe";
 
 export interface Env {
 
@@ -25,6 +26,13 @@ export interface Env {
 	USER_ASSET_MAX_SIZE: string;
 	POSTER_ASSET_MAX_SIZE: string;
 	USER_ASSETS_BUCKET_1: R2Bucket;
+
+	STRIPE_SECRET_KEY: string
+	STRIPE_WEBHOOK_SECRET: string
+	STRIPE_DOMAIN_VERIFY: string
+
+	// STRIPE_prod_something: string
+	[k: `STRIPE_prod_${string}`]: string
 
 	// Example binding to KV. Learn more at https://developers.cloudflare.com/workers/runtime-apis/kv/
 	// MY_KV_NAMESPACE: KVNamespace;
@@ -48,6 +56,7 @@ export function fixPath(path: string){
 export function getAssetType(url: URL, request: Request){
 	return url.searchParams.get('type') || request.headers.get('content-type') || 'application/octet-stream';
 }
+
 async function handleRequest_(request: Request, env: Env) {
 	const url = new URL(request.url);
 	const path = url.pathname;
@@ -94,6 +103,28 @@ async function handleRequest_(request: Request, env: Env) {
 			}
 		}
 
+	} else if (path.startsWith('/payments/')) {
+
+		const pathE = path.split('/');
+		const webhook = pathE[2];
+
+		// no auth since stripe will call and signature verification is done inside the handler
+		// const uid = await handleJwtAuth(request, env.SUPABASE_JWT_SECRET);
+
+		if (webhook === 'stripe_webhook_nc7dhaug1ff') {
+			response = await handleStripeWebhook(request, env);
+		}
+
+	} else if (path.startsWith('/billing/')) {
+
+		const pathE = path.split('/');
+		const endpoint = pathE[2];
+
+		const uid = await handleJwtAuth(request, env.SUPABASE_JWT_SECRET);
+
+		if (endpoint === 'checkout' && method === 'POST') {
+			response = await handleCreateCheckoutSession(request, env, uid);
+		}
 	}
 	return response;
 }

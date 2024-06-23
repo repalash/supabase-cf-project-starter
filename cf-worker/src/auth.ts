@@ -13,6 +13,7 @@ export async function handleJwtAuth(request: Request, secret: string){
 	const isValid = await jwt.verify(token, secret); // also checks for expiry
 	if(!isValid) throw 'invalid token'
 	const { payload } = jwt.decode(token);
+	if(!payload) throw 'invalid token'
 	if(payload.aud !== 'authenticated')
 		throw 'invalid aud'
 	// console.log(payload)
