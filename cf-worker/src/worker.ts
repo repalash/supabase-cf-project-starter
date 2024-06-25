@@ -13,7 +13,7 @@ import { SupabaseWrapper } from './supabase';
 import { UserAssetOps } from './userAssetOps';
 import { R2Wrapper } from './r2';
 import { ManagedImageOps } from './managedImageOps';
-import {handleCreateCheckoutSession, handleStripeWebhook} from "./stripe";
+import {handleCreateCheckoutSession, handleCreatePortalSession, handleStripeWebhook} from "./stripe";
 
 export interface Env {
 
@@ -125,6 +125,9 @@ async function handleRequest_(request: Request, env: Env) {
 		if (endpoint === 'checkout' && method === 'POST') {
 			response = await handleCreateCheckoutSession(request, env, uid);
 		}
+		if (endpoint === 'portal' && method === 'POST') {
+			response = await handleCreatePortalSession(request, env, uid);
+		}
 	}
 	return response;
 }
@@ -146,7 +149,7 @@ export default {
 
 			let response = await handleRequest_(request, env);
 
-			if(!response) return new Response('Bad Request', { status: 400, headers: { 'Content-Type': 'text/plain', ...corsHeaders } });
+			if(!response) return new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain', ...corsHeaders } });
 
 			response = new Response(response.body, response);
 

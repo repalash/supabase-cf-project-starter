@@ -194,11 +194,58 @@ export async function handleCreateCheckoutSession(request: Request, env: Env, ui
 		mode: 'subscription',
 		success_url: `${return_url}?success=true&session_id={CHECKOUT_SESSION_ID}`,
 		cancel_url: `${return_url}?canceled=true`,
-	});
-	if(!session.url)
+	}).catch(e => {
+		console.error('Failed to create checkout session', e.message)
+		return null
+	})
+	if(!session?.url)
 		// throw new HTTPException(500, {message: 'Failed to create session'})
 		return Response.json({message: 'Failed to create session'}, {status: 500})
 
-	console.log(session.url)
+	return Response.json({url: session.url}, {status: 200})
+}
+
+export async function handleCreatePortalSession(request: Request, env: Env, uid: string) {
+	// uid is required just from jwt to verify email is sent properly.
+	if(!uid) return new Response('Unauthorized', { status: 401, headers: { 'Content-Type': 'text/plain', ...corsHeaders } });
+
+	const supabase = new SupabaseWrapper(env, request)
+	const uidEmail = await supabase.rpcPost('get_email_for_uid', {user_id: uid}, true)
+	const email1 = uidEmail.ok ? (await uidEmail.text()) : ''
+	if(!uidEmail.ok) console.log('failed to get email for uid', uid, email1, await uidEmail.text()) // todo remove later.
+	console.log('got email from db for uid', email1) // todo remove later.
+
+	const stripe = new Stripe(env.STRIPE_SECRET_KEY)
+	const formData = await request.formData()
+	const user_email = formData.get('email') // we don-t really need this from frontend
+
+	if(!user_email || !email1 || ("\""+user_email+"\"") !== email1) {
+		console.log('Invalid email', user_email, email1)
+		return Response.json({message: 'Invalid email'}, {status: 400})
+	}
+
+	// const lookup_key = formData.get('lookup_key')
+	const return_url = formData.get('return_url')
+	if(!user_email /*|| !lookup_key*/ || !return_url) return Response.json({message: 'Invalid form data'}, {status: 400})
+	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) return Response.json({message: 'Invalid return url'}, {status: 400})
+
+	// get existing customer, this is required because stipe can create multiple customers for an email.
+	const customers = await stripe.customers.list({email: user_email, limit: 2})
+	const customer = customers.data[0]?.id
+	if(customers.data.length > 1) console.error('SUBSCRIPTION_AUTH_STRIPE: Multiple customers found for email', user_email, customer)
+	if(!customer) return Response.json({message: 'Customer not found'}, {status: 400})
+
+	const session = await stripe.billingPortal.sessions.create({
+		customer,
+		return_url
+	}).catch(e => {
+		console.error('Failed to create portal session', e.message)
+		return null
+	});
+	if(!session?.url)
+		// throw new HTTPException(500, {message: 'Failed to create session'})
+		return Response.json({message: 'Failed to create session'}, {status: 500})
+
+	// console.log('portal session', session.url)
 	return Response.json({url: session.url}, {status: 200})
 }
