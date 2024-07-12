@@ -14,7 +14,9 @@ export async function handleJwtAuth(request: Request, secret: string){
 	if(!isValid) throw 'invalid token'
 	const { payload } = jwt.decode(token);
 	if(!payload) throw 'invalid token'
-	if(payload.aud !== 'authenticated')
+	// supabase has an array in aud. (as per spec)
+	if(typeof payload.aud === 'string') payload.aud = [payload.aud]
+	if (!Array.isArray(payload.aud) || !payload.aud.includes('authenticated'))
 		throw 'invalid aud'
 	// console.log(payload)
 	if(!payload.sub)
