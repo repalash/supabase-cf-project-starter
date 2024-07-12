@@ -4,23 +4,25 @@ import {SupabaseWrapper} from "./supabase";
 import {corsHeaders} from "./cors";
 
 async function updateSubscription(subscription: Stripe.Subscription, c: Context) {
-	// using product id directly
-	// const product = subscription.items.data[0].plan.product
-	// if (typeof product !== 'string') {
-	// 	// throw new HTTPException(400, {message: 'Expected product id, got object'})
-	// 	return Response.json({message: 'Expected product id, got object'}, {status: 400})
-	// }
-	// if (!product.startsWith('prod_')) {
-	// 	// throw new HTTPException(400, {message: 'Invalid product id'})
+	const itemData = (subscription.items.data[0]||subscription.items.data['0'])
+	if(!itemData) {
+		console.error('No item found in subscription', subscription.id)
+		return Response.json({message: 'No item found in subscription'}, {status: 400})
+	}
+	const product = subscription.items.data[0].plan.product
+	const productId = typeof product === 'string' ? product : product?.id
+	// if (!productId?.startsWith('prod_')) {
+	// 	console.log('Invalid product id', productId)
 	// 	return Response.json({message: 'Invalid product id'}, {status: 400})
 	// }
 
 	// using lookup key
+	// using lookup key (should not use lookup_key here as it can be assigned to another price, so it will be empty here.
 	const lookupKey = subscription.items.data[0].price.lookup_key || ''
 
 	// @ts-ignore
-	const product_plan = c.env['STRIPE_'+lookupKey] // STRIPE_lookup_key = 'plan_name'
-	if (!product_plan?.length) {
+	const product_plan = productId ? c.env['STRIPE_'+productId] : c.env['STRIPE_'+lookupKey] // STRIPE_lookup_key = 'plan_name'
+	if (!product_plan || typeof product_plan !== 'string' || !product_plan.length) {
 		// throw new HTTPException(400, {message: 'Invalid product id, unable to find product'})
 		console.warn('Invalid product id, unable to find product by lookup key', lookupKey)
 		return Response.json({received: true, message: "Ignored Product"}, {status: 200}) // returning 200 as we don't want to retry webhook

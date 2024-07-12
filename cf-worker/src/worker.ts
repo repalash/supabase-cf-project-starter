@@ -30,6 +30,7 @@ export interface Env {
 	STRIPE_SECRET_KEY: string
 	STRIPE_WEBHOOK_SECRET: string
 	STRIPE_DOMAIN_VERIFY: string
+	STRIPE_WEBHOOK_ENDPOINT: string
 
 	// STRIPE_prod_something: string
 	[k: `STRIPE_prod_${string}`]: string
@@ -111,7 +112,8 @@ async function handleRequest_(request: Request, env: Env) {
 		// no auth since stripe will call and signature verification is done inside the handler
 		// const uid = await handleJwtAuth(request, env.SUPABASE_JWT_SECRET);
 
-		if (webhook === 'stripe_webhook_nc7dhaug1ff') {
+		// if (webhook === 'stripe_webhook_nc7dhaug1ff') {
+		if (webhook === env.STRIPE_WEBHOOK_ENDPOINT) {
 			response = await handleStripeWebhook(request, env);
 		}
 

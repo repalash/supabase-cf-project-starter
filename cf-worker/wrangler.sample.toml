@@ -15,6 +15,10 @@ USER_ASSET_BASE_URL_1 = "https://cdn1.<domain name>.com"
 SUPABASE_ANON_TOKEN = ""
 USER_ASSET_MAX_SIZE = "200000000" # 200MB
 POSTER_ASSET_MAX_SIZE = "50000000" # 50MB
+STRIPE_DOMAIN_VERIFY = "https://example.com" # domain for stripe return url
+STRIPE_your_lookup_key = "premium" # product id for premium plan. Optional, DONT USE only LOOKUP KEYS for this
+STRIPE_product_id = "premium" # product id for premium plan
+STRIPE_WEBHOOK_ENDPOINT = "stripe_webhook_akcnbiweuin" # stripe webhook endpoint https://api.<domain>/payments/stripe_webhook_akcnbiweuin
 
 [[r2_buckets]]
 binding = "USER_ASSETS_BUCKET_1"
@@ -30,6 +34,9 @@ USER_ASSET_BASE_URL_1 = "https://cdn1.<domain name>.com"
 SUPABASE_ANON_TOKEN = ""
 USER_ASSET_MAX_SIZE = "200000000" # 200MB
 POSTER_ASSET_MAX_SIZE = "50000000" # 50MB
+STRIPE_DOMAIN_VERIFY = "https://example.com" # domain for stripe return url
+STRIPE_your_lookup_key = "premium" # product id for premium plan
+STRIPE_WEBHOOK_ENDPOINT = "stripe_webhook_akcnbiweuin" # stripe webhook endpoint
 
 [[env.staging.r2_buckets]]
 binding = "USER_ASSETS_BUCKET_1"
