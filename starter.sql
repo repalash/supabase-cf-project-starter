@@ -1,6 +1,9 @@
 -- Database schema for a simple project management app.
 -- Requires minimal supabase setup with auth enabled.
 
+-- TODO - Add `set search_path = ''` in all the functions, and use public.table to access them.
+--  See - https://supabase.com/docs/guides/database/database-advisors?queryGroups=lint&lint=0011_function_search_path_mutable
+
 -- region Extensions
 create extension if not exists moddatetime schema extensions;
 
@@ -17,6 +20,7 @@ create table public.profiles
     username   text unique,
     full_name  text,
     avatar_url text,
+    cover_url  text                                                  default null,
     website    text,
     is_private boolean                                               default false,
     bio        text                                                  default '',
@@ -49,8 +53,19 @@ create table public.projects
     poster_url     text,
     user_editing   uuid                                         references auth.users on delete set null,
     user_editing_at timestamp with time zone,
+    like_count int4 default 0 not null,
 
     constraint slug_length check (char_length(slug) >= 3)
+);
+
+-- Create table for project likes
+create table public.project_likes
+(
+    id         uuid                     not null primary key default extensions.uuid_generate_v4(),
+    project_id uuid references public.projects on delete cascade not null,
+    user_id    uuid references auth.users on delete cascade not null,
+    created_at timestamp with time zone default now() not null,
+    unique (project_id, user_id)
 );
 
 -- Create table for project versions. Each project can have multiple versions for tracking changes.
@@ -91,6 +106,8 @@ create table public.user_assets
 alter table profiles
     enable row level security;
 alter table projects
+    enable row level security;
+alter table project_likes
     enable row level security;
 alter table project_versions
     enable row level security;
@@ -158,6 +175,23 @@ begin
 end;
 $$ language plpgsql security definer;
 
+-- Trigger to update like_count when a like is added or removed
+create or replace function public.update_project_like_count()
+    returns trigger as
+$$
+begin
+    if tg_op = 'INSERT' then
+        update public.projects
+        set like_count = like_count + 1
+        where id = NEW.project_id;
+    elsif tg_op = 'DELETE' then
+        update public.projects
+        set like_count = like_count - 1
+        where id = OLD.project_id;
+    end if;
+    return null;
+end;
+$$ language plpgsql;
 -- endregion
 
 -- region Access management functions
@@ -275,7 +309,7 @@ begin
         description  = coalesce(project_description, description),
         slug         = coalesce(project_slug, slug),
         is_private   = coalesce(project_is_private, is_private),
-        is_template   = coalesce(project_is_template, is_template),
+        is_template  = coalesce(project_is_template, is_template),
         tags         = coalesce(project_tags, tags),
         project_data = coalesce(project_project_data, project_data),
         poster_url   = coalesce(project_poster_url, poster_url)
@@ -286,6 +320,59 @@ begin
     return project;
 end;
 $$ language plpgsql security definer;
+
+-- Add tag to a project
+create or replace function public.add_project_tag(
+    project_id uuid,
+    tag text
+)
+    returns void as
+$$
+begin
+    update projects
+    set tags = array_append(tags, tag)
+    where id = project_id
+      and not (tag = any (tags))
+      and (owner_id = auth.uid() or auth.uid() = any (editors));
+end;
+$$ language plpgsql security definer;
+
+-- Remove tag from a project
+create or replace function public.remove_project_tag(
+    project_id uuid,
+    tag text
+)
+    returns void as
+$$
+begin
+    update projects
+    set tags = array_remove(tags, tag)
+    where id = project_id
+      and tag = any (tags)
+      and (owner_id = auth.uid() or auth.uid() = any (editors));
+end;
+$$ language plpgsql security definer;
+
+-- Function to like/unlike a project
+create or replace function public.like_project(l_project_id uuid, do_like boolean)
+    returns void as
+$$
+begin
+    -- check if logged in
+    if auth.uid() is null then
+        raise exception 'User is not authenticated';
+    end if;
+    if do_like then
+        insert into public.project_likes (project_id, user_id)
+        values (l_project_id, auth.uid())
+        on conflict do nothing;
+    else
+        delete from public.project_likes
+        where project_id = l_project_id
+          and user_id = auth.uid();
+    end if;
+end;
+$$ language plpgsql security invoker;
 
 -- Add a project member or viewer to a project
 create or replace function public.add_project_member(
@@ -538,6 +625,7 @@ create or replace function public.update_profile(
     user_username text default null,
     user_website text default null,
     user_avatar_url text default null,
+    user_cover_url text default null,
     user_bio text default null
 )
     returns profiles as
@@ -550,6 +638,7 @@ begin
         username  = coalesce(user_username, username),
         website   = coalesce(user_website, website),
         avatar_url = coalesce(user_avatar_url, avatar_url),
+        cover_url = coalesce(user_cover_url, cover_url),
         bio = coalesce(user_bio, bio)
     where id = auth.uid()
     returning * into profile;
@@ -698,7 +787,7 @@ execute procedure public.handle_new_auth_user();
 
 create trigger on_projects_updated
     after update
-    on projects
+    on public.projects
     for each row
 execute procedure public.handle_project_updated();
 
@@ -706,33 +795,39 @@ execute procedure public.handle_project_updated();
 
 create trigger handle_updated_at_profiles
     before update
-    on profiles
+    on public.profiles
     for each row
 execute procedure extensions.moddatetime(updated_at);
 
 create trigger handle_updated_at_projects
     before update
-    on projects
+    on public.projects
     for each row
 execute procedure extensions.moddatetime(updated_at);
 
 create trigger handle_updated_at_user_assets
     before update
-    on user_assets
+    on public.user_assets
     for each row
 execute procedure extensions.moddatetime(updated_at);
 
 create trigger handle_owner_update_projects
     after update
-    on projects
+    on public.projects
     for each row
 execute procedure public.handle_project_owner_updated();
 
 create trigger handle_username_update_profiles
     after update
-    on profiles
+    on public.profiles
     for each row
 execute procedure public.handle_profile_username_updated();
+
+create trigger update_like_count_trigger
+    after insert or delete
+    on public.project_likes
+    for each row
+execute procedure public.update_project_like_count();
 
 -- endregion
 
@@ -752,6 +847,12 @@ create policy "User assets can be seen if public or user has project access" on 
     (is_private = false
         or (owner_id is not null and auth.uid() = owner_id)
         or can_user_access_project_id(project_id));
+
+create policy "Users can like projects" on public.project_likes
+    for insert to authenticated with check (auth.uid() = user_id);
+
+create policy "Users can unlike projects" on public.project_likes
+    for delete to authenticated using (auth.uid() = user_id);
 
 -- endregion
 
