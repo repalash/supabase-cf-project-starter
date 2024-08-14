@@ -5,7 +5,7 @@ import { R2Wrapper } from './r2';
 
 const allowedImageTypes = [['image/jpeg', 'jpeg'], ['image/png', 'png'], ['image/jpg', 'jpeg'], ['image/webp', 'webp'], ];
 
-interface TAsset {isProject: boolean, assetId: string, assetUrl: string, isProfile: boolean}
+interface TAsset {isProject: boolean, assetId: string, assetUrl: string, isProfile: boolean, isCover: boolean}
 
 export class ManagedImageOps{
 	constructor(
@@ -16,10 +16,10 @@ export class ManagedImageOps{
 		public assetPath: string,
 	){}
 
-	private async updateProject({isProject, isProfile, assetId, assetUrl}:TAsset) {
+	private async updateProject({isProject, isProfile, assetId, assetUrl, isCover}:TAsset) {
 		let updateAssetResponse =
 			isProject ? await this.db.updateProject({project_id: assetId, project_poster_url: assetUrl}) :
-				isProfile ? await this.db.updateProfile({user_avatar_url: assetUrl}) :
+				isProfile ? await this.db.updateProfile(isCover ? {user_cover_url: assetUrl} : {user_avatar_url: assetUrl}) :
 					await this.db.updateUserAsset({asset_name: assetId, asset_poster_url: assetUrl});
 		return updateAssetResponse;
 	}
@@ -41,9 +41,10 @@ export class ManagedImageOps{
 		if (!assetJson.id) throw 'asset/project/profile id not found';
 		if(assetJson.id !== assetId) throw 'asset/project/profile id mismatch';
 
-		const assetUrl = (isProfile ? assetJson.avatar_url : assetJson.poster_url) || '';
+		const isCover = this.assetPath.split('/')[2] === 'cover';
+		const assetUrl = (isProfile ? isCover ? assetJson.cover_url : assetJson.avatar_url : assetJson.poster_url) || '';
 
-		return { isProject, isProfile, assetId, assetUrl };
+		return { isProject, isProfile, assetId, assetUrl, isCover };
 	}
 
 	async update(uid: string){
@@ -76,7 +77,11 @@ export class ManagedImageOps{
 			throw e;
 		}
 
-		if(!!asset.assetUrl) await this.r2.delete(asset.assetUrl).catch(e=>console.error(e));
+		// delete existing asset
+		if(!!asset.assetUrl) {
+			const assetKey2 = userAssetUrlToKey(asset.assetUrl, this.env);
+			await this.r2.delete(assetKey2).catch(e=>console.error(e));
+		}
 
 		return updateAssetResponse;
 	}
@@ -90,7 +95,8 @@ export class ManagedImageOps{
 		}
 
 		try{
-			await this.r2.delete(asset.assetUrl);
+			const assetKey = userAssetUrlToKey(asset.assetUrl, this.env);
+			await this.r2.delete(assetKey);
 		}catch(e){
 			// revert supabase
 			const updateAssetResponse2 = await this.updateProject(asset);

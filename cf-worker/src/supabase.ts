@@ -87,6 +87,7 @@ export class SupabaseWrapper{
 		user_username?: string,
 		user_website?: string,
 		user_avatar_url?: string,
+		user_cover_url?: string,
 		user_bio?: string,
 	}) {
 		return this.rpcPost('update_profile', ops);

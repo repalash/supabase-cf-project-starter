@@ -233,6 +233,7 @@ The API works similar to the user_asset endpoint.
 For user assets: `/api/v1/image/<filePath>`
 
 For user profile avatars: `/api/v1/image/.profiles/<userId>`
+For user profile covers: `/api/v1/image/.profiles/<userId>/cover`
 
 For project posters: `/api/v1/image/.projects/<projectId>`
 

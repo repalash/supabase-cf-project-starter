@@ -4,6 +4,7 @@ main = "src/worker.ts"
 compatibility_date = "2023-06-28"
 route = "https://api.<domain name>.com/*"
 usage_model = "bundled" # optional, default is "unbound" for paid and "bundled" for free plans
+logpush = true
 
 # Variable bindings. These are arbitrary, plaintext strings (similar to environment variables)
 # Note: Use secrets to store sensitive data.
