@@ -680,18 +680,22 @@ create or replace function public.expire_profile_plan(
 $$
 declare
     profile profiles;
+    uid uuid;
 begin
     -- Check if user has permission to update asset only service_role. TODO: make a new service role for stripe and use that
     if auth.role() != 'service_role' then
         raise exception 'User is not authenticated';
     end if;
 
+    select id into uid from auth.users where email = user_email;
+
     update profiles
     set plan = 'free',
         plan_expiry = null
-    where id = (select id from auth.users au where au.email = user_email)
-      and plan = if_current_plan
-    returning * into profile;
+    where id = uid
+      and plan = if_current_plan;
+
+    select * into profile from profiles where id = uid;
     return profile;
 end;
 $$ language plpgsql security definer;  -- note that this is definer

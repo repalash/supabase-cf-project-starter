@@ -52,7 +52,7 @@ async function updateSubscription(subscription: Stripe.Subscription, c: Context)
 		// console.log('response from update_plan', JSON.stringify(resp)) // todo check for fail and return with error
 		if (!res.ok || !resp?.id) {
 			// throw new HTTPException(500, {message: 'Failed to update profile'})
-			console.error('Failed to set plan for profile', await res.text())
+			console.error('Failed to set plan for profile', JSON.stringify(resp))
 			return Response.json({message: 'Failed to set plan for profile'}, {status: 500})
 		}
 		result = `Updated profile (${resp.id}:${email}) to ${product_plan} till ${new Date(expire * 1000).toISOString()}`
@@ -66,10 +66,10 @@ async function updateSubscription(subscription: Stripe.Subscription, c: Context)
 		// console.log('response from expire_profile_plan', JSON.stringify(resp)) // todo check for fail and return with error
 		if (!res.ok || !resp?.id) {
 			// throw new HTTPException(500, {message: 'Failed to update profile'})
-			console.error('Failed to update profile to free plan', await res.text())
+			console.error('Failed to update profile to free plan', email, JSON.stringify(resp))
 			return Response.json({message: 'Failed to update profile to free plan'}, {status: 500})
 		}
-		const result = `Expired profile (${resp.id}:${email}) from ${product_plan}`
+		result = `Expired profile (${resp.id}:${email}) from ${product_plan}`
 	}
 	return Response.json({received: true, message: result}, {status: 200})
 }
