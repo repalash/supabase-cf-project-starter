@@ -191,7 +191,7 @@ begin
     end if;
     return null;
 end;
-$$ language plpgsql;
+$$ language plpgsql security definer;
 -- endregion
 
 -- region Access management functions
@@ -201,7 +201,7 @@ create or replace function public.can_user_access_project(project projects)
     returns boolean as
 $$
 begin
-    return ((project.is_private = false and project.deleted_at is null) or auth.uid() = project.owner_id or auth.uid() = any (project.editors) or
+    return project.deleted_at is null and (project.is_private = false or auth.uid() = project.owner_id or auth.uid() = any (project.editors) or
             auth.uid() = any (project.viewers));
 end;
 $$ language plpgsql security definer;
@@ -857,6 +857,9 @@ create policy "Users can like projects" on public.project_likes
 
 create policy "Users can unlike projects" on public.project_likes
     for delete to authenticated using (auth.uid() = user_id);
+
+create policy "Users can read their likes" on public.project_likes
+    for select to authenticated using (auth.uid() = user_id);
 
 -- endregion
 
