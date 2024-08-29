@@ -26,6 +26,8 @@ create table public.profiles
     bio        text                                                  default '',
     plan       text                                        not null  default 'free',
     plan_expiry timestamp with time zone                             default null,
+    follower_count int4 default 0 not null,
+
     constraint username_length check (char_length(username) >= 3)
 );
 
@@ -66,6 +68,16 @@ create table public.project_likes
     user_id    uuid references auth.users on delete cascade not null,
     created_at timestamp with time zone default now() not null,
     unique (project_id, user_id)
+);
+
+-- Create table for user follows
+create table public.user_follows
+(
+    id         uuid                     not null primary key default extensions.uuid_generate_v4(),
+    follower_id uuid references auth.users on delete cascade not null,
+    user_id    uuid references auth.users on delete cascade not null,
+    created_at timestamp with time zone default now() not null,
+    unique (follower_id, user_id)
 );
 
 -- Create table for project versions. Each project can have multiple versions for tracking changes.
@@ -110,6 +122,8 @@ alter table projects
 alter table project_likes
     enable row level security;
 alter table project_versions
+    enable row level security;
+alter table user_follows
     enable row level security;
 alter table user_assets
     enable row level security;
@@ -192,6 +206,25 @@ begin
     return null;
 end;
 $$ language plpgsql security definer;
+
+-- Trigger to update follower_count when a follower is added or removed
+create or replace function public.update_user_follower_count()
+    returns trigger as
+$$
+begin
+    if tg_op = 'INSERT' then
+        update public.profiles
+        set follower_count = follower_count + 1
+        where id = NEW.user_id;
+    elsif tg_op = 'DELETE' then
+        update public.profiles
+        set follower_count = follower_count - 1
+        where id = OLD.user_id;
+    end if;
+    return null;
+end;
+$$ language plpgsql security definer;
+
 -- endregion
 
 -- region Access management functions
@@ -370,6 +403,27 @@ begin
         delete from public.project_likes
         where project_id = l_project_id
           and user_id = auth.uid();
+    end if;
+end;
+$$ language plpgsql security invoker;
+
+-- Function to follow/unfollow a user
+create or replace function public.follow_user(l_user_id uuid, do_follow boolean)
+    returns void as
+$$
+begin
+    -- check if logged in
+    if auth.uid() is null then
+        raise exception 'User is not authenticated';
+    end if;
+    if do_follow then
+        insert into public.user_follows (follower_id, user_id)
+        values (auth.uid(), l_user_id)
+        on conflict do nothing;
+    else
+        delete from public.user_follows
+        where follower_id = auth.uid()
+          and user_id = l_user_id;
     end if;
 end;
 $$ language plpgsql security invoker;
@@ -827,6 +881,12 @@ create trigger handle_username_update_profiles
     for each row
 execute procedure public.handle_profile_username_updated();
 
+create trigger update_follower_count_trigger
+    after insert or delete
+    on public.user_follows
+    for each row
+execute procedure public.update_user_follower_count();
+
 create trigger update_like_count_trigger
     after insert or delete
     on public.project_likes
@@ -860,6 +920,15 @@ create policy "Users can unlike projects" on public.project_likes
 
 create policy "Users can read their likes" on public.project_likes
     for select to authenticated using (auth.uid() = user_id);
+
+create policy "Users can follow other users" on public.user_follows
+    for insert to authenticated with check (auth.uid() = follower_id);
+
+create policy "Users can unfollow other users" on public.user_follows
+    for delete to authenticated using (auth.uid() = follower_id);
+
+create policy "Users can read their follows" on public.user_follows
+    for select to authenticated using (auth.uid() = follower_id);
 
 -- endregion
 
