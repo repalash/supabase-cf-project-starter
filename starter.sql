@@ -127,6 +127,19 @@ create table public.user_assets
     constraint owner_or_project check (owner_id is not null or project_id is not null)
 );
 
+-- create table for project comments
+create table public.project_comments
+(
+    id         uuid                     not null primary key default extensions.uuid_generate_v4(),
+    project_id uuid references projects on delete cascade not null,
+    user_id    uuid references auth.users on delete cascade not null,
+    created_at timestamp with time zone default now() not null,
+    updated_at timestamp with time zone default now() not null,
+    comment    text                     not null,
+    parent_id  uuid                     default null,
+    like_count int4 default 0 not null
+);
+
 -- endregion
 
 -- region Enable Row Level Security (RLS)
@@ -144,6 +157,8 @@ alter table user_follows
 alter table user_assets
     enable row level security;
 alter table user_notifications
+    enable row level security;
+alter table project_comments
     enable row level security;
 
 -- endregion
@@ -913,6 +928,13 @@ create trigger handle_updated_at_user_assets
     for each row
 execute procedure extensions.moddatetime(updated_at);
 
+create trigger handle_updated_at_project_comments
+    before update
+    on public.project_comments
+    for each row
+execute procedure extensions.moddatetime(updated_at);
+
+
 create trigger handle_owner_update_projects
     after update
     on public.projects
@@ -952,6 +974,21 @@ create trigger notify_project_like_trigger
     for each row
 execute procedure public.notify_project_like();
 
+create or replace function public.notify_project_comment()
+    returns trigger as
+$$
+begin
+    perform public.notify_user(NEW.project_id, (select owner_id from projects where id = NEW.project_id), NEW.user_id, 'comment');
+    return new;
+end;
+$$ language plpgsql security invoker;
+
+create trigger notify_project_comment_trigger
+    after insert
+    on public.project_comments
+    for each row
+execute procedure public.notify_project_comment();
+
 create or replace function public.notify_user_follow()
     returns trigger as
 $$
@@ -985,6 +1022,19 @@ create policy "User assets can be seen if public or user has project access" on 
     (is_private = false
         or (owner_id is not null and auth.uid() = owner_id)
         or can_user_access_project_id(project_id));
+
+create policy "Comments can be seen if project can be seen" on project_comments
+    for select using (can_user_access_project_id(project_id));
+
+create policy "Comments can be inserted if project can be seen" on project_comments
+    for insert to authenticated with check (can_user_access_project_id(project_id));
+
+create policy "Comments can be updated if user is owner" on project_comments
+    for update to authenticated using (auth.uid() = user_id);
+
+-- todo later
+-- create policy "Comments can be deleted if user is owner" on project_comments
+--     for delete to authenticated using (auth.uid() = user_id);
 
 create policy "Users can read their notifications" on public.user_notifications
     for select to authenticated using (auth.uid() = user_id);
@@ -1023,6 +1073,8 @@ create index on user_assets (project_id);
 create index on user_assets (is_private);
 create index on user_assets (asset_type);
 
+create index on project_comments (project_id);
+
 create index on profiles (username);
 
 -- create index on project_likes (project_id);
@@ -1030,8 +1082,8 @@ create index on profiles (username);
 --
 -- create index on user_follows (follower_id);
 -- create index on user_follows (user_id);
---
--- create index on notifications (user_id);
+
+-- create index on user_notifications (user_id);
 
 
 -- endregion
