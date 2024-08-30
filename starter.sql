@@ -103,6 +103,9 @@ create table public.user_notifications
 --     unique (user_id, project_id, type)
 );
 
+-- add constraint for on conflict (user_id, project_id, type)
+ALTER TABLE public.user_notifications ADD CONSTRAINT user_notifications_user_id_project_id_type_key UNIQUE (user_id, project_id, type);
+
 -- Create table for user assets
 create table public.user_assets
 (
@@ -938,7 +941,7 @@ create or replace function public.notify_project_like()
     returns trigger as
 $$
 begin
-    select public.notify_user(NEW.project_id, (select owner_id from projects where id = NEW.project_id), NEW.user_id, 'like');
+    perform public.notify_user(NEW.project_id, (select owner_id from projects where id = NEW.project_id), NEW.user_id, 'like');
     return new;
 end;
 $$ language plpgsql security invoker;
@@ -953,7 +956,7 @@ create or replace function public.notify_user_follow()
     returns trigger as
 $$
 begin
-    select public.notify_user(null, NEW.user_id, NEW.follower_id, 'follow');
+    perform public.notify_user(null, NEW.user_id, NEW.follower_id, 'follow');
     return new;
 end;
 $$ language plpgsql security invoker;
