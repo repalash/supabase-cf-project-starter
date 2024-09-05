@@ -31,6 +31,14 @@ create table public.profiles
     constraint username_length check (char_length(username) >= 3)
 );
 
+-- create a table for user meta
+create table public.user_meta
+(
+    id              uuid references auth.users on delete cascade not null primary key,
+    updated_at      timestamp with time zone                     not null default now(),
+    notification    jsonb                                        not null default '{}'::jsonb -- notification settings
+);
+
 
 -- Create table for projects. Each user can have multiple projects.
 -- Projects are private by default, but can be shared with other users or made public. A project can have a single owner, but multiple editors and viewers.
@@ -160,6 +168,8 @@ alter table user_notifications
     enable row level security;
 alter table project_comments
     enable row level security;
+alter table user_meta
+    enable row level security;
 
 -- endregion
 
@@ -174,6 +184,10 @@ $$
 begin
     insert into public.profiles (id, full_name, username, avatar_url)
     values (new.id, new.raw_user_meta_data ->> 'full_name', new.raw_user_meta_data ->> 'username',new.raw_user_meta_data ->> 'avatar_url');
+
+    insert into public.user_meta (id)
+    values (new.id);
+
     return new;
 end;
 $$ language plpgsql security definer;
@@ -424,6 +438,7 @@ create or replace function public.notify_user(i_project_id uuid, o_user_id uuid,
     returns void as
 $$
 begin
+    -- todo check the notification settings etc
     -- auth.uid() should be i_user_id (the user who liked/followed) since its definer
     if auth.uid() is null or auth.uid() != i_user_id then
         raise exception 'User is not authenticated';
@@ -753,6 +768,23 @@ begin
 end;
 $$ language plpgsql security definer;
 
+-- Function to update user meta
+create or replace function public.update_user_meta(
+    user_notification jsonb
+)
+    returns user_meta as
+$$
+declare
+    meta user_meta;
+begin
+    update user_meta
+    set notification = coalesce(user_notification, notification)
+    where id = auth.uid()
+    returning * into meta;
+    return meta;
+end;
+$$ language plpgsql security definer;
+
 -- Function to update a user profile plan and expiry. This will be called from the worker, triggered by stripe webhook.
 create or replace function public.update_profile_plan(
     user_email text,
@@ -910,6 +942,12 @@ create trigger handle_updated_at_profiles
     for each row
 execute procedure extensions.moddatetime(updated_at);
 
+create trigger handle_updated_at_user_meta
+    before update
+    on public.user_meta
+    for each row
+execute procedure extensions.moddatetime(updated_at);
+
 create trigger handle_updated_at_notifications
     before update
     on public.user_notifications
@@ -1011,6 +1049,9 @@ execute procedure public.notify_user_follow();
 create policy "Public profiles are viewable by everyone." on profiles
     for select using (is_private = false);
 
+create policy "User can see their own meta" on user_meta
+    for select using (auth.uid() = id);
+
 create policy "Project can be seen if public or user is owner or collaborator." on projects
     for select using (can_user_access_project(projects));
 
@@ -1076,6 +1117,8 @@ create index on user_assets (asset_type);
 create index on project_comments (project_id);
 
 create index on profiles (username);
+
+create index on user_meta (id);
 
 -- create index on project_likes (project_id);
 -- create index on project_likes (user_id);
