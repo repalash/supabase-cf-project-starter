@@ -290,7 +290,7 @@ create or replace function public.can_user_access_project_id(project_id uuid)
     returns boolean as
 $$
 begin
-    return project_id is not null and can_user_access_project((select is_private, owner_id, editors, viewers from projects where id = project_id));
+    return project_id is not null and exists(select 1 from projects where id = project_id and can_user_access_project(projects));
 end;
 $$ language plpgsql security definer;
 
@@ -375,7 +375,7 @@ create or replace function public.update_project(
     project_slug text default null,
     project_is_private boolean default null,
     project_is_template boolean default null,
-    project_tags text[] default null,
+--     project_tags text[] default null,
     project_project_data jsonb default null,
     project_poster_url text default null
 )
@@ -390,7 +390,7 @@ begin
         slug         = coalesce(project_slug, slug),
         is_private   = coalesce(project_is_private, is_private),
         is_template  = coalesce(project_is_template, is_template),
-        tags         = coalesce(project_tags, tags),
+--         tags         = coalesce(project_tags, tags), -- todo remove
         project_data = coalesce(project_project_data, project_data),
         poster_url   = coalesce(project_poster_url, poster_url)
     where id = project_id
@@ -401,35 +401,40 @@ begin
 end;
 $$ language plpgsql security definer;
 
--- Add tag to a project
-create or replace function public.add_project_tag(
+-- Toggle tag in a project
+create or replace function public.toggle_project_tag(
     project_id uuid,
-    tag text
+    tag text,
+    do_set boolean
 )
     returns void as
 $$
 begin
+    if tag = '' or tag is null or tag like '\_%' then
+        raise exception 'Forbidden tag';
+    end if;
+
     update projects
-    set tags = array_append(tags, tag)
+    set tags = case when do_set then array_append(tags, tag) else array_remove(tags, tag) end
     where id = project_id
       and not (tag = any (tags))
       and (owner_id = auth.uid() or auth.uid() = any (editors));
 end;
 $$ language plpgsql security definer;
 
--- Remove tag from a project
-create or replace function public.remove_project_tag(
+-- Add/remove featured tag to a project (only for example.com emails)
+create or replace function public.set_project_tag_protected(
     project_id uuid,
-    tag text
+    tag text,
+    do_set boolean
 )
     returns void as
 $$
 begin
     update projects
-    set tags = array_remove(tags, tag)
+    set tags = case when do_set then array_append(tags, tag) else array_remove(tags, tag) end
     where id = project_id
-      and tag = any (tags)
-      and (owner_id = auth.uid() or auth.uid() = any (editors));
+      and (auth.jwt()->>'email' like '%@ijewel3d.com');
 end;
 $$ language plpgsql security definer;
 
@@ -954,6 +959,7 @@ create trigger handle_updated_at_notifications
     for each row
 execute procedure extensions.moddatetime(updated_at);
 
+-- todo dont update when like_count is updated
 create trigger handle_updated_at_projects
     before update
     on public.projects
@@ -1106,6 +1112,8 @@ create index on projects (slug);
 create index on projects (owner_id);
 create index on projects (editors);
 create index on projects (viewers);
+create index on projects (owner_username);
+create index on projects (created_at);
 
 create index on project_versions (project_id);
 
@@ -1120,9 +1128,9 @@ create index on profiles (username);
 
 create index on user_meta (id);
 
--- create index on project_likes (project_id);
--- create index on project_likes (user_id);
---
+create index on project_likes (project_id);
+create index on project_likes (user_id);
+
 -- create index on user_follows (follower_id);
 -- create index on user_follows (user_id);
 
