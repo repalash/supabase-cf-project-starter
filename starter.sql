@@ -73,7 +73,7 @@ create table public.project_likes
 (
     id         uuid                     not null primary key default extensions.uuid_generate_v4(),
     project_id uuid references public.projects on delete cascade not null,
-    user_id    uuid references auth.users on delete cascade not null,
+    user_id    uuid references public.profiles on delete cascade not null,
     created_at timestamp with time zone default now() not null,
     unique (project_id, user_id)
 );
@@ -82,8 +82,8 @@ create table public.project_likes
 create table public.user_follows
 (
     id         uuid                     not null primary key default extensions.uuid_generate_v4(),
-    follower_id uuid references auth.users on delete cascade not null,
-    user_id    uuid references auth.users on delete cascade not null,
+    follower_id uuid references public.profiles on delete cascade not null,
+    user_id    uuid references public.profiles on delete cascade not null,
     created_at timestamp with time zone default now() not null,
     unique (follower_id, user_id)
 );
@@ -139,8 +139,8 @@ create table public.user_assets
 create table public.project_comments
 (
     id         uuid                     not null primary key default extensions.uuid_generate_v4(),
-    project_id uuid references projects on delete cascade not null,
-    user_id    uuid references auth.users on delete cascade not null,
+    project_id uuid references public.projects on delete cascade not null,
+    user_id    uuid references public.profiles on delete cascade not null,
     created_at timestamp with time zone default now() not null,
     updated_at timestamp with time zone default now() not null,
     comment    text                     not null,
