@@ -437,8 +437,10 @@ begin
     insert into public.user_notifications (user_id, project_id, type, users_ref)
     values (o_user_id, i_project_id, i_type, array[i_user_id]::uuid[])
     on conflict (user_id, project_id, type) -- where updated_at > now() - interval '3 days' -- todo test this...
-        do update set users_ref = array_append(user_notifications.users_ref, i_user_id);
+        do update set users_ref = array_append(user_notifications.users_ref, i_user_id)
+        where not (i_user_id = any (user_notifications.users_ref));
 
+--   todo remove from users_ref when user unlikes/unfollows?
 --   todo  perform pg_notify('notification', jsonb_build_object('type', 'like', 'notification_id', notification_id)::text);
 end;
 $$ language plpgsql security definer;
