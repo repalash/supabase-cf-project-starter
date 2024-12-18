@@ -98,9 +98,8 @@ async function handleWebhookEvent(c: Context) {
 		case 'customer.subscription.created':
 			subscription = c.event.data.object;
 			status = subscription.status;
-			console.log(`[Unhandled]: created Subscription ${subscription.id} status is ${status}.`);
-			// do nothing
-			// await updateSubscription(subscription, c.env, status, event) // todo: should we?
+			console.log(`created Subscription ${subscription.id} status is ${status}.`);
+			result = await updateSubscription(subscription, c)
 			break;
 		case 'customer.subscription.updated':
 			subscription = c.event.data.object;
