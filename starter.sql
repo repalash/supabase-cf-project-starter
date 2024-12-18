@@ -107,7 +107,8 @@ create table public.user_notifications
     updated_at timestamp with time zone default now() not null,
     type       text                     not null, -- 'like', 'comment', 'follow', 'mention'
     users_ref  uuid[]                   not null, -- user_id of the users involved
-    data       jsonb                    not null default '{}'::jsonb
+    data       jsonb                    not null default '{}'::jsonb,
+    is_read    boolean                  not null default false
 --     unique (user_id, project_id, type)
 );
 
@@ -448,14 +449,17 @@ begin
     if auth.uid() is null or auth.uid() != i_user_id then
         raise exception 'User is not authenticated';
     end if;
+    if i_user_id = o_user_id then
+        return;
+    end if;
     -- or insert new notification. no need for data.
     -- update notification if already exists(in last 3 days), adding user_id to users_ref
     insert into public.user_notifications (user_id, project_id, type, users_ref)
     values (o_user_id, i_project_id, i_type, array[i_user_id]::uuid[])
     on conflict (user_id, project_id, type) -- where updated_at > now() - interval '3 days' -- todo test this...
-        do update set users_ref = array_append(user_notifications.users_ref, i_user_id);
-
+        do update set users_ref = array_append(user_notifications.users_ref, i_user_id), is_read = false;
 --   todo  perform pg_notify('notification', jsonb_build_object('type', 'like', 'notification_id', notification_id)::text);
+
 end;
 $$ language plpgsql security definer;
 
@@ -1085,6 +1089,9 @@ create policy "Comments can be updated if user is owner" on project_comments
 
 create policy "Users can read their notifications" on public.user_notifications
     for select to authenticated using (auth.uid() = user_id);
+
+create policy "Users can update their notifications" on public.user_notifications
+    for update to authenticated using (auth.uid() = user_id);
 
 create policy "Users can like projects" on public.project_likes
     for insert to authenticated with check (auth.uid() = user_id);

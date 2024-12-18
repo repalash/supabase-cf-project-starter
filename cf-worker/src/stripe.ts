@@ -40,7 +40,8 @@ async function updateSubscription(subscription: Stripe.Subscription, c: Context)
 	const supabase = new SupabaseWrapper(c.env, c.req)
 	const status = subscription.status
 	const isActive = status === 'active'
-	const isExpiredOrEnded = !isActive && status !== 'trialing' && status !== 'incomplete'
+	// todo check for any other active subscription before expiring.
+	const isExpiredOrEnded = !isActive && status !== 'trialing' && !status.includes('incomplete')
 	let result = ''
 	if(isActive) {
 		const res = await supabase.rpcPost('update_profile_plan', {
@@ -193,6 +194,7 @@ export async function handleCreateCheckoutSession(request: Request, env: Env, ui
 			},
 		],
 		...customerData,
+		allow_promotion_codes: true,
 		mode: 'subscription',
 		success_url: `${return_url}?success=true&session_id={CHECKOUT_SESSION_ID}`,
 		cancel_url: `${return_url}?canceled=true`,
@@ -231,7 +233,7 @@ export async function handleCreatePortalSession(request: Request, env: Env, uid:
 	if(!user_email /*|| !lookup_key*/ || !return_url) return Response.json({message: 'Invalid form data'}, {status: 400})
 	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) return Response.json({message: 'Invalid return url'}, {status: 400})
 
-	// get existing customer, this is required because stipe can create multiple customers for an email.
+	// get existing customer, this is required because stripe can create multiple customers for an email.
 	const customers = await stripe.customers.list({email: user_email, limit: 2})
 	const customer = customers.data[0]?.id
 	if(customers.data.length > 1) console.error('SUBSCRIPTION_AUTH_STRIPE: Multiple customers found for email', user_email, customer)
