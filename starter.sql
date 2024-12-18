@@ -105,7 +105,7 @@ create table public.user_notifications
     user_id    uuid references auth.users on delete cascade not null,
     project_id uuid references projects on delete cascade default null,
     updated_at timestamp with time zone default now() not null,
-    type       text                     not null, -- 'like', 'comment', 'follow', 'mention'
+    type       text                     not null, -- 'like', 'comment', 'follow', 'mention', '_featured'
     users_ref  uuid[]                   not null, -- user_id of the users involved
     data       jsonb                    not null default '{}'::jsonb,
     is_read    boolean                  not null default false
@@ -423,22 +423,6 @@ begin
 end;
 $$ language plpgsql security definer;
 
--- Add/remove featured tag to a project (only for example.com emails)
-create or replace function public.set_project_tag_protected(
-    project_id uuid,
-    tag text,
-    do_set boolean
-)
-    returns void as
-$$
-begin
-    update projects
-    set tags = case when do_set then array_append(tags, tag) else array_remove(tags, tag) end
-    where id = project_id
-      and (auth.jwt()->>'email' like '%@ijewel3d.com');
-end;
-$$ language plpgsql security definer;
-
 -- Trigger to notify user when a project is liked or user is followed
 create or replace function public.notify_user(i_project_id uuid, o_user_id uuid, i_user_id uuid, i_type text)
     returns void as
@@ -457,11 +441,36 @@ begin
     insert into public.user_notifications (user_id, project_id, type, users_ref)
     values (o_user_id, i_project_id, i_type, array[i_user_id]::uuid[])
     on conflict (user_id, project_id, type) -- where updated_at > now() - interval '3 days' -- todo test this...
-        do update set users_ref = array_append(user_notifications.users_ref, i_user_id), is_read = false;
+        do update set users_ref = array_append(user_notifications.users_ref, i_user_id), is_read = false
+        where not (i_user_id = any (user_notifications.users_ref));
+
+--   todo remove from users_ref when user unlikes/unfollows?
 --   todo  perform pg_notify('notification', jsonb_build_object('type', 'like', 'notification_id', notification_id)::text);
 
 end;
 $$ language plpgsql security definer;
+
+-- Add/remove featured tag to a project (only for example.com emails)
+create or replace function public.set_project_tag_protected(
+    project_id uuid,
+    tag text,
+    do_set boolean
+)
+    returns void as
+$$
+begin
+    update projects
+    set tags = case when do_set then array_append(tags, tag) else array_remove(tags, tag) end
+    where id = project_id
+      and (auth.jwt()->>'email' like '%@ijewel3d.com');
+
+    -- if tag is _featured then notify the user that their project is featured
+    if tag = '_featured' and do_set then
+        perform public.notify_user(project_id, (select owner_id from projects where id = project_id), auth.uid(), tag);
+    end if;
+end;
+$$ language plpgsql security definer;
+
 
 -- Function to like/unlike a project
 create or replace function public.like_project(l_project_id uuid, do_like boolean)
@@ -963,12 +972,32 @@ create trigger handle_updated_at_notifications
     for each row
 execute procedure extensions.moddatetime(updated_at);
 
--- todo dont update when like_count is updated
+CREATE OR REPLACE FUNCTION public.handle_updated_at_projects_fn()
+    RETURNS TRIGGER AS $$
+BEGIN
+    -- Check if any column other than `like_count` has changed
+    IF (
+        (NEW.* IS DISTINCT FROM OLD.*) -- Detect any changes
+            AND (NEW.like_count = OLD.like_count) -- Exclude changes in `like_count`
+        ) THEN
+        NEW.updated_at = now();
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 create trigger handle_updated_at_projects
     before update
     on public.projects
     for each row
-execute procedure extensions.moddatetime(updated_at);
+execute procedure public.handle_updated_at_projects_fn();
+
+-- create trigger handle_updated_at_projects
+--     before update
+--     on public.projects
+--     for each row
+-- execute procedure extensions.moddatetime(updated_at);
 
 create trigger handle_updated_at_user_assets
     before update
@@ -1083,9 +1112,8 @@ create policy "Comments can be inserted if project can be seen" on project_comme
 create policy "Comments can be updated if user is owner" on project_comments
     for update to authenticated using (auth.uid() = user_id);
 
--- todo later
--- create policy "Comments can be deleted if user is owner" on project_comments
---     for delete to authenticated using (auth.uid() = user_id);
+create policy "Comments can be deleted if user is owner" on project_comments
+    for delete to authenticated using (auth.uid() = user_id);
 
 create policy "Users can read their notifications" on public.user_notifications
     for select to authenticated using (auth.uid() = user_id);
