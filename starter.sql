@@ -876,6 +876,29 @@ begin
 end;
 $$ language plpgsql security definer ;
 
+-- todo add some check or rate limit here?
+create or replace function public.check_user_exists(
+    p_username text,
+    p_email text
+)
+    returns jsonb as
+$$
+begin
+    return jsonb_build_object(
+        'username_exists', exists(
+            select 1
+            from public.profiles
+            where username = p_username
+        ),
+        'email_exists', exists(
+            select 1
+            from auth.users
+            where email = p_email
+        )
+    );
+end;
+$$ language plpgsql security definer;
+
 -- endregion
 
 -- region Util Functions
