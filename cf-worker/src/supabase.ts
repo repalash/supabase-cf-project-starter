@@ -128,7 +128,7 @@ export class SupabaseWrapper{
 		});
 	}
 
-	async deleteUserAsset(ops: {asset_name: string}) {
+	async deleteUserAsset(ops: {asset_name: string, asset_owner_id: string}) {
 		return this.rpcPost('delete_user_asset', ops, true);
 	}
 

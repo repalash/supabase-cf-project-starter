@@ -60,7 +60,7 @@ export class UserAssetOps{
 			await this.r2.put(assetKey, this.request);
 		} catch (e) {
 			// delete asset from supabase
-			const deleteAssetResponse = await this.db.deleteUserAsset({ asset_name: this.assetPath });
+			const deleteAssetResponse = await this.db.deleteUserAsset({ asset_name: this.assetPath, asset_owner_id: this.uid });
 			if (!deleteAssetResponse.ok) {
 				console.error('delete asset failed when uploading asset to r2 bucket failed', await deleteAssetResponse.text());
 				throw e;
@@ -118,7 +118,7 @@ export class UserAssetOps{
 	}
 
 	async delete() {
-		const deleteAssetResponse = await this.db.deleteUserAsset({ asset_name: this.assetPath });
+		const deleteAssetResponse = await this.db.deleteUserAsset({ asset_name: this.assetPath, asset_owner_id: this.uid });
 		if (!deleteAssetResponse.ok) return deleteAssetResponse;
 
 		const deleteAssetJson: any = await deleteAssetResponse.json();
