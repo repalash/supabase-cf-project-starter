@@ -54,7 +54,7 @@ create table public.projects
     description    text,
     is_private     boolean                                      not null             default true,
     is_template    boolean                                      not null             default false,
-    owner_id       uuid references auth.users on delete cascade not null,
+    owner_id       uuid not null,
     owner_username text                                                              default null,
     editors        uuid[]                                       not null             default '{}'::uuid[],
     viewers        uuid[]                                       not null             default '{}'::uuid[],
@@ -67,6 +67,10 @@ create table public.projects
 
     constraint slug_length check (char_length(slug) >= 3)
 );
+ALTER TABLE ONLY public.projects
+    ADD CONSTRAINT projects_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.projects
+    ADD CONSTRAINT public_projects_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.profiles(id);
 
 -- Create table for project likes
 create table public.project_likes
