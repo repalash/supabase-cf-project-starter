@@ -961,6 +961,30 @@ begin
 end;
 $$ language plpgsql security invoker stable;
 
+-- Function to get the top project owners based on the number of projects they own.
+CREATE FUNCTION public.get_top_public_project_owners(limit_count integer DEFAULT 10) RETURNS TABLE(id uuid, username text, avatar_url text, project_count bigint)
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+RETURN QUERY
+SELECT
+    u.id,
+    u.username,
+    u.avatar_url,
+    COUNT(p.id) AS project_count
+FROM
+    profiles u
+        JOIN projects p ON u.id = p.owner_id
+WHERE
+    p.is_private = FALSE
+GROUP BY
+    u.id, u.username
+ORDER BY
+    project_count DESC
+    LIMIT
+        limit_count;
+END;
+$$;
 -- endregion
 
 -- endregion
