@@ -186,9 +186,31 @@ alter table user_meta
 create or replace function public.handle_new_auth_user()
     returns trigger as
 $$
+declare
+    generated_username text;
+    base_username text;
+    user_count int;
 begin
+    -- If username is provided, use it; otherwise (In OAuth case), generate from full_name
+    if (new.raw_user_meta_data ->> 'username') is null or (new.raw_user_meta_data ->> 'username') = '' then
+        -- Generate base username from full_name (remove special characters and convert to lowercase)
+        base_username := lower(trim(regexp_replace(new.raw_user_meta_data ->> 'full_name', '[^a-zA-Z0-9]', '', 'g')));
+
+        -- Count existing usernames with the same base name
+        select count(*) into user_count from public.profiles where username like base_username || '%';
+
+        -- If username already exists, append the count + 1
+        if user_count > 0 then
+            generated_username := base_username || (user_count + 1);
+        else
+            generated_username := base_username;
+        end if;
+    else
+        generated_username := new.raw_user_meta_data ->> 'username';
+    end if;
+
     insert into public.profiles (id, full_name, username, avatar_url)
-    values (new.id, new.raw_user_meta_data ->> 'full_name', new.raw_user_meta_data ->> 'username',new.raw_user_meta_data ->> 'avatar_url');
+    values (new.id, new.raw_user_meta_data ->> 'full_name', generated_username, new.raw_user_meta_data ->> 'avatar_url');
 
     insert into public.user_meta (id)
     values (new.id);
