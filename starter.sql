@@ -36,7 +36,9 @@ create table public.user_meta
 (
     id              uuid references auth.users on delete cascade not null primary key,
     updated_at      timestamp with time zone                     not null default now(),
-    notification    jsonb                                        not null default '{}'::jsonb -- notification settings
+    notification     jsonb                                        not null default '{}'::jsonb, -- notification settings
+    username_history text[]                                      not null default '{}'::text[], -- username history
+    last_username_change timestamp with time zone default now() not null
 );
 
 
@@ -237,6 +239,8 @@ begin
     update projects
     set owner_username = new.username
     where owner_id = new.id;
+    set username_history = array_append(username_history, old.username), last_username_change = now()
+    where id = new.id;
     return new;
 end;
 $$ language plpgsql security definer;
@@ -905,6 +909,20 @@ begin
 end;
 $$ language plpgsql security definer;
 
+create or replace function public.check_username_history(p_username text)
+returns profiles as $$
+declare
+profile profiles;
+begin
+    select p.username
+    into profile_username
+    from profiles p join user_meta um ON p.id = um.id
+    where p.username = p_username OR p_username = ANY(um.username_history)
+    order by p.created_at
+    limit 1;
+    return profile_username;
+END;
+$$ LANGUAGE plpgsql;
 -- endregion
 
 -- region Util Functions
