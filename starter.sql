@@ -771,6 +771,7 @@ create or replace function public.update_profile(
     user_avatar_url text default null,
     user_cover_url text default null,
     user_bio text default null
+    user_is_private boolean default false
 )
     returns profiles as
 $$
@@ -784,6 +785,7 @@ begin
         avatar_url = coalesce(user_avatar_url, avatar_url),
         cover_url = coalesce(user_cover_url, cover_url),
         bio = coalesce(user_bio, bio)
+        is_private = coalesce(user_is_private, is_private)
     where id = auth.uid()
     returning * into profile;
     return profile;
