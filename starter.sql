@@ -236,11 +236,12 @@ begin
     if new.username = old.username then
         return new;
     end if;
+    update user_meta
+    set username_history = array_append(username_history, old.username), last_username_change = now()
+    where id = new.id;
     update projects
     set owner_username = new.username
     where owner_id = new.id;
-    set username_history = array_append(username_history, old.username), last_username_change = now()
-    where id = new.id;
     return new;
 end;
 $$ language plpgsql security definer;
