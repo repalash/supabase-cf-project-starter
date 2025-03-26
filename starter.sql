@@ -1,3 +1,5 @@
+-- noinspection SqlNoDataSourceInspectionForFile
+
 -- Database schema for a simple project management app.
 -- Requires minimal supabase setup with auth enabled.
 
@@ -911,9 +913,9 @@ end;
 $$ language plpgsql security definer;
 
 create or replace function public.check_username_history(p_username text)
-returns profiles as $$
+returns text as $$
 declare
-profile profiles;
+    profile_username text;
 begin
     select p.username
     into profile_username
