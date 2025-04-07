@@ -206,7 +206,7 @@ create or replace function public.handle_project_updated()
     returns trigger as
 $$
 begin
-    if new.project_data = old.project_data then
+    if new.project_data = old.project_data or new.project_data is null then
         return new;
     end if;
     insert into public.project_versions (project_id, project_data)
@@ -220,7 +220,7 @@ create or replace function public.handle_project_owner_updated()
     returns trigger as
 $$
 begin
-    if new.owner_id = old.owner_id then
+    if new.owner_id = old.owner_id or new.owner_id is null then
         return new;
     end if;
     update projects
@@ -235,7 +235,7 @@ create or replace function public.handle_profile_username_updated()
     returns trigger as
 $$
 begin
-    if new.username = old.username then
+    if new.username = old.username or new.username is null then
         return new;
     end if;
     update user_meta
