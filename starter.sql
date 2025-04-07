@@ -925,7 +925,7 @@ begin
     limit 1;
     return profile_username;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql security definer;
 -- endregion
 
 -- region Util Functions
