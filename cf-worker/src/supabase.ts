@@ -12,7 +12,8 @@ export class SupabaseWrapper{
 		const res = await fetch(this.request.url.replace(url.origin, this.env.SUPABASE_URL), {
 			body: this.request.body,
 			headers,
-			method: this.request.method
+			method: this.request.method,
+			redirect: "manual"
 		});
 		return res as any as Response;
 	}
