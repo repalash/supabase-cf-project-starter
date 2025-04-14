@@ -197,6 +197,12 @@ begin
     insert into public.user_meta (id)
     values (new.id);
 
+    if new.raw_user_meta_data ->> 'newsletter' is not null then
+        update public.user_meta
+        set user_notification = jsonb_set(user_notification, '{newsletter}', to_jsonb((new.raw_user_meta_data ->> 'newsletter')::boolean))
+        where id = new.id;
+    end if;
+
     return new;
 end;
 $$ language plpgsql security definer;
