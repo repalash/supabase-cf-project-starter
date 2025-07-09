@@ -131,5 +131,9 @@ export class SupabaseWrapper{
 		return this.rpcPost('delete_user_asset', ops, true);
 	}
 
+	async updateWelcomeEmailMeta(ops: { user_id: string; }) {
+		return this.rpcPost('update_welcome_email_meta', ops);
+	}
+		
 }
 

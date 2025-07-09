@@ -13,6 +13,7 @@ import { SupabaseWrapper } from './supabase';
 import { UserAssetOps } from './userAssetOps';
 import { R2Wrapper } from './r2';
 import { ManagedImageOps } from './managedImageOps';
+import { sendWelcomeEmail } from './email/send-email';
 
 export interface Env {
 
@@ -61,10 +62,52 @@ async function handleRequest_(request: Request, env: Env) {
 		response = await db.proxy(url);
 
 	} else if (path.startsWith('/api/')) {
-
 		const pathE = path.split('/');
 		const version = pathE[2];
 
+		const action = pathE[3];
+		if (action === 'webhook-user') {
+			console.log('path--->', path, new Date().toLocaleTimeString());
+			console.log('webhook-user......');
+			// print body
+			const body = (await request.json()) as any;
+			const newRecord = body.record;
+			// const email = newRecord.email;
+
+			const emailConfirmedAt = newRecord.email_confirmed_at ? new Date(newRecord.email_confirmed_at) : null;
+			const sevenDaysAgo = new Date();
+			sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+			if (
+				emailConfirmedAt && emailConfirmedAt > sevenDaysAgo && !newRecord.raw_user_meta_data.welcome_email_at
+			) {
+				const t = await fetch('https://api.resend.com/emails', {
+					method: 'POST',
+					headers: {
+						Authorization: `Bearer re_QgJ3Lp22_DAsRLYZBtY85US8ece5W4pYK`,
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({
+						from: 'onboarding@resend.dev',
+						to: 'siddhant@ijewel3d.com',
+						subject: 'Welcome to iJewel Design',
+						html: '<p>Welcome to iJewel Design! We are excited to have you as part of our community.</p>',
+					}),
+				})
+				.then(async (res) => res.json())
+				.catch((e) => console.error('resend....',e));
+				const updated = await db
+					.updateWelcomeEmailMeta({ user_id: newRecord.id })
+					.then(async (res) => res.json())
+					.then((res) => {
+						console.log('updated...',res);
+					})
+					.catch((e) => console.error('rpc...', e));
+
+			}
+
+			response = new Response('{}', { status: 200 });
+			return response;
+		}
 		if (version === 'v1') {
 			const action = pathE[3];
 			const uid = await handleJwtAuth(request, env.SUPABASE_JWT_SECRET);
@@ -93,6 +136,7 @@ async function handleRequest_(request: Request, env: Env) {
 					response;
 			}
 		}
+		
 
 	}
 	return response;

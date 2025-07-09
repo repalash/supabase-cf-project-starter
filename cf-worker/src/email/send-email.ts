@@ -1,5 +1,5 @@
 import {MailgunBindings, MailgunHelper} from './mailgun'
-import {globalConfig} from '../config'
+import {globalConfig} from '../../config'
 
 export type SendEmailProps = {from: string, to: string, subject: string, template: string, variables: any, tags: string[]}
 

@@ -558,6 +558,39 @@ $$ language plpgsql security definer;
 
 -- endregion
 
+-- Function to store when welcome email sent at
+create or replace function update_welcome_email_meta(
+  user_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+  current_metadata jsonb;
+  updated_metadata jsonb;
+begin
+  -- Fetch current metadata
+  select raw_user_meta_data
+  into current_metadata
+  from auth.users
+  where id = user_id;
+
+  -- Merge welcome_email_at: now() into metadata
+  updated_metadata := coalesce(current_metadata, '{}'::jsonb)
+                      || jsonb_build_object('welcome_email_at', now());
+
+  -- Update the user's metadata
+  update auth.users
+  set raw_user_meta_data = updated_metadata
+  where id = user_id;
+
+  -- Return the updated metadata
+  return updated_metadata;
+end;
+$$;
+-- endregion
+
 -- region Util Functions
 
 create or replace function get_request_headers(header text)
@@ -713,3 +746,5 @@ begin
     create schema public;
 end;
 $$ language plpgsql security definer;
+
+-- endregion
