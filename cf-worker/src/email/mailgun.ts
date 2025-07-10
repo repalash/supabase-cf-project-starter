@@ -1,11 +1,16 @@
-import {SendEmailProps} from './send-email'
-
-
 export type MailgunBindings = {
     MAILGUN_API_KEY: string
     MAILGUN_API_SERVER: string
     MAILGUN_API_URL?: string
     MAILGUN_WEBHOOK_SIGNING_KEY?: string
+}
+export type MailgunSendEmailProps = {
+    from: string
+    to: string
+    subject: string
+    template: string
+    variables: any
+    tags: string[]
 }
 
 export class MailgunHelper{
@@ -19,7 +24,7 @@ export class MailgunHelper{
         if(!this.bindings.MAILGUN_API_SERVER || !this.bindings.MAILGUN_API_KEY) throw Error('Invalid mailgun configuration')
     }
 
-    async sendEmail({from, to, subject, template, variables, tags}: SendEmailProps){
+    async sendEmail({from, to, subject, template, variables, tags}: MailgunSendEmailProps){
         const form = new FormData();
         form.append('from', from)
         form.append('to', to)

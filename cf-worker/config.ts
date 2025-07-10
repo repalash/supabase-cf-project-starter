@@ -1,33 +1,35 @@
-
-import {SendEmailProps} from './src/email/send-email'
+import { ResendSendEmailProps } from './src/email/resend';
 
 export const globalConfig = {
-	EMAIL_GLOBAL_VARIABLES: {
-		company_name: 'iJewel3D',
-		company_copyright: 'iJewel3d, 2023',
-		company_address: '160 Robinson Road, #14-04 - Singapore - 068914',
-		support_email: 'contact@ijewel3d.com',
-	},
-	EMAIL_GLOBAL_TAGS: ['ijewel-design', 'ijewel3d'],
-
-	// email otp
-	OTP_EMAIL_RESEND_THRESH: 60 * 2, // 2 min
-	OTP_EMAIL_EXPIRY: 60 * 10, // 10 min
-	// OTP_EMAIL_RESEND_THRESH: 1, // testing
-	// OTP_EMAIL_EXPIRY: 1, // testing
-
-	OTP_EMAIL_DATA: {
-		from: 'iJewel Design <noreply@mail.ijewel3d.com>',
-		subject: 'Welcome',
-		template: 'welcome-email', // https://app.mailgun.com/app/sending/domains/mail.ijewel3d.com/templates/details/ZW1haWwgdmVyaWZpY2F0aW9uIGNvZGU%3D
-		variables: {
-			message_description: 'user welcome description',
-			message_footer: 'out product link',
-			message_title: 'Welcome',
-			action_text: 'Something went wrong...', // this will be replaced with OTP
+	// EMAIL_GLOBAL_VARIABLES: {
+	// 	company_name: 'iJewel3D',
+	// 	company_copyright: 'iJewel3d, 2023',
+	// 	company_address: '160 Robinson Road, #14-04 - Singapore - 068914',
+	// 	support_email: 'contact@ijewel3d.com',
+	// },
+	EMAIL_GLOBAL_TAGS: [
+		{
+			name: 'product',
+			value: 'ijewel-design',
 		},
-		tags: ['welcome-email', 'ijewel-design'],
-	} as SendEmailProps,
+		{
+			name: 'company',
+			value: 'ijewel3d',
+		},
+	],
+
+	WELCOME_EMAIL_DATA: {
+		// from: 'iJewel Design <onboarding@resend.dev>',
+		from: 'onboarding@resend.dev',
+		subject: 'Welcome',
+		html: `<h1>Welcome to iJewel Design!</h1><p>Thank you for signing up. We're excited to have you on board.</p>`,
+		tags: [
+			{
+				name: 'category',
+				value: 'welcome-email',
+			},
+		],
+	} as ResendSendEmailProps,
 } as const;
 
-export type GlobalConfig = typeof globalConfig
+export type GlobalConfig = typeof globalConfig;
