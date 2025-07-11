@@ -75,41 +75,16 @@ async function handleRequest_(request: Request, env: Env) {
 				const oldRecord = body.old_record;
 				const newRecord = body.record;
 				const email = newRecord.email;
-				console.log('------------------------------------\n',new Date().toLocaleTimeString());
-				console.log('Old Record:',{
-					email_confirmed_at: oldRecord.email_confirmed_at,
-					raw_user_meta_data: oldRecord.raw_user_meta_data,
-					raw_app_meta_data: oldRecord.raw_app_meta_data,
-					email: oldRecord.email,
-				});
-				console.log('New Record:',{
-					email_confirmed_at: newRecord.email_confirmed_at,
-					raw_user_meta_data: newRecord.raw_user_meta_data,
-					raw_app_meta_data: newRecord.raw_app_meta_data,
-					email: newRecord.email,
-				})
+
 				let isSendWelcomeEmail = false
-				const emailConfirmedAt = newRecord.email_confirmed_at;
 				const welcomeEmailAt = newRecord.raw_user_meta_data.welcome_email_at;
 				if(newRecord.raw_app_meta_data.provider == 'email' && oldRecord.email_confirmed_at == null && newRecord.email_confirmed_at && !welcomeEmailAt) isSendWelcomeEmail = true;
 				else if(newRecord.raw_app_meta_data.provider !== 'eamil' && newRecord.email_confirmed_at && !welcomeEmailAt) isSendWelcomeEmail = true;
 				
 				
 				if (isSendWelcomeEmail) {
-					console.log('################# EMAIL IS SENT #####################');
-					db.updateWelcomeEmailMeta({ user_id: newRecord.id })
+					await sendWelcomeEmail(env as any, email)
 				}
-
-				// NOTE:- asumming all existing user has welcome_email_at as timestamp
-				// if (emailConfirmedAt && !welcomeEmailAt) {
-				// 	sendWelcomeEmail(env as any, email)
-				// 		.then((res) => console.log('Email...sent', res))
-				// 		.then((res) => db.updateWelcomeEmailMeta({ user_id: newRecord.id }))
-				// 		.catch((e) => console.error('Erroe:', e))
-				// 		.then(() => console.log('welcome flag updated'))
-				// }
-				// return from server
-				console.log('------------------------------------\n');
 
 				return new Response('{}', { status: 200 });
 			}
@@ -141,7 +116,6 @@ async function handleRequest_(request: Request, env: Env) {
 			}
 		}
 		
-
 	}
 	return response;
 }

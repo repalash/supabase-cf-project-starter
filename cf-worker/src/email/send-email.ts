@@ -1,7 +1,13 @@
-import {ResendBindings, ResendHelper, ResendSendEmailProps} from './resend'
-import {globalConfig} from '../../config'
+import {ResendBindings, ResendHelper} from './resend'
+import {globalConfig} from './config'
 
-
+export type ResendSendEmailProps = {
+	from: string;
+	to: string;
+	subject: string;
+	html: string;
+	tags: Record<'name' | 'value', string>[];
+};
 
 export async function sendWelcomeEmail(env: ResendBindings, email: string) {
     const helper = new ResendHelper(env)

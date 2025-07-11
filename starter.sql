@@ -591,94 +591,21 @@ end;
 $$;
 -- endregion
 
--- -- Runction to call webhook for email confirm
--- create or replace function notify_email_confirmed_webhook()
--- returns trigger as $$
--- declare
---   webhook_url text := 'https://10f598ed6e4b.ngrok-free.app/api/v1/webhook-user';  -- webhook URL
--- begin
---   if new.email_confirmed_at is not null and old.email_confirmed_at is null then
---     perform net.http_post(
---       url := webhook_url,
---       headers := json_build_object('Content-Type', 'application/json'),
---       body := json_build_object(
---         'event', 'EMAIL_CONFIRMED',
---         'user_id', new.id,
---         'email', new.email,
---         'email_confirmed_at', to_char(new.email_confirmed_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
---       )::text
---     );
---   end if;
---   return new;
--- end;
--- $$ language plpgsql;
-
--- -- Create the trigger on auth.users from email
--- create trigger on_email_confirmed_webhook
--- after update on auth.users
--- for each row
--- when (
---   old.email_confirmed_at is null and new.email_confirmed_at is not null
--- )
--- execute procedure notify_email_confirmed_webhook();
-
--- -- Create the trigger on auth.users for provider 
--- create trigger on_user_created_with_verified_email
--- after insert on auth.users
--- for each row
--- when (new.email_confirmed_at is not null)
--- execute procedure notify_email_confirmed_webhook();
-
--- -- endregion
--- drop trigger if exists on_email_confirmed_webhook on auth.users;
--- drop trigger if exists on_user_created_with_verified_email on auth.users;
--- drop function if exists notify_email_confirmed_webhook();
+-- Function to call webhook for email confirm
+CREATE TRIGGER "email_confirmed_webhook_trigger"
+AFTER UPDATE ON auth.users
+FOR EACH ROW
+WHEN (OLD.email_confirmed_at IS NULL AND NEW.email_confirmed_at IS NOT NULL)
+EXECUTE FUNCTION supabase_functions.http_request(
+  'https://10f598ed6e4b.ngrok-free.app/api/v1/webhook-user',
+  'POST',
+  '{"Content-type":"application/json"}',
+  '{}',
+  '5000'
+);
 
 -- endregion
 
--- region Webhooks
-
-
-create or replace function email_confirmed_webhook()
-returns trigger as $$
-declare
-  json_body text;
-begin
-    -- json_body := json_build_object(
-    --   'event', 'EMAIL_CONFIRMED',
-    --   'user_id', new.id,
-    --   'email', new.email,
-    --   'email_confirmed_at', to_char(new.email_confirmed_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
-    -- )::text;
-
-    perform "supabase_functions"."http_request"(
-      'https://10f598ed6e4b.ngrok-free.app/api/v1/webhook-user',
-      'POST',
-      '{"Content-Type":"application/json"}',
-      '{}',
-      '1000'
-    );
-
-
-  return new;
-end;
-$$ language plpgsql;
-CREATE TRIGGER "webhook-profile-update" 
-AFTER UPDATE ON public.profiles F
-OR EACH ROW EXECUTE 
-FUNCTION supabase_functions.http_request('https://f3fb1ebd0479.ngrok-free.app/api/v1/webhook-profile',
- 'POST',
-  '{"Content-type":"application/json"}',
-   '{}',
-    '5000');
-
-create trigger email_confirmed_webhook_trigger
-after update on auth.users
-for each row
-when (
-  old.email_confirmed_at is null and new.email_confirmed_at is not null
-)
-execute function email_confirmed_webhook();
 
 -- region Util Functions
 

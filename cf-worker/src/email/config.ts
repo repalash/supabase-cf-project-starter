@@ -1,4 +1,6 @@
-import { ResendSendEmailProps } from './src/email/resend';
+
+import { ResendSendEmailProps } from './resend';
+import welcomeMailTemplate from '../../../../email-templates/welcome.html'
 
 export const globalConfig = {
 	// EMAIL_GLOBAL_VARIABLES: {
@@ -19,10 +21,9 @@ export const globalConfig = {
 	],
 
 	WELCOME_EMAIL_DATA: {
-		// from: 'iJewel Design <onboarding@resend.dev>',
-		from: 'onboarding@resend.dev',
+		from: 'iJewel Design <onboarding@resend.dev>',
 		subject: 'Welcome',
-		html: `<h1>Welcome to iJewel Design!</h1><p>Thank you for signing up. We're excited to have you on board.</p>`,
+		html: welcomeMailTemplate,
 		tags: [
 			{
 				name: 'category',
