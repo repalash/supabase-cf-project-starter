@@ -71,19 +71,14 @@ async function handleRequest_(request: Request, env: Env) {
 			if (action === 'webhook-user') {
 				const response = new Response('{}', { status: 200 });
 				const body = (await request.json()) as any;
-				if(body.type !== 'UPDATE') return response;
-				const oldRecord = body.old_record;
-				const newRecord = body.record;
-				const email = newRecord.email;
+				if (body.type !== 'UPDATE') return response;
 
-				let isSendWelcomeEmail = false
-				const welcomeEmailAt = newRecord.raw_user_meta_data.welcome_email_at;
-				if(newRecord.raw_app_meta_data.provider == 'email' && oldRecord.email_confirmed_at == null && newRecord.email_confirmed_at && !welcomeEmailAt) isSendWelcomeEmail = true;
-				else if(newRecord.raw_app_meta_data.provider !== 'eamil' && newRecord.email_confirmed_at && !welcomeEmailAt) isSendWelcomeEmail = true;
-				
-				
-				if (isSendWelcomeEmail) {
-					await sendWelcomeEmail(env as any, email)
+				const oldRecord = body.old_record,
+					newRecord = body.record,
+					email = newRecord.email;
+					
+				if (oldRecord.email_confirmed_at == null && newRecord.email_confirmed_at) {
+					await sendWelcomeEmail(env as any, email);
 				}
 
 				return new Response('{}', { status: 200 });

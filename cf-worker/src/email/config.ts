@@ -22,7 +22,7 @@ export const globalConfig = {
 
 	WELCOME_EMAIL_DATA: {
 		from: 'iJewel Design <onboarding@resend.dev>',
-		subject: 'Welcome',
+		subject: 'Welcome to iJewel Design!',
 		html: welcomeMailTemplate,
 		tags: [
 			{

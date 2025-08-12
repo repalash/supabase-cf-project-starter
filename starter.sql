@@ -558,54 +558,20 @@ $$ language plpgsql security definer;
 
 -- endregion
 
--- Function to store when welcome email sent at
-create or replace function update_welcome_email_meta(
-  user_id uuid
-)
-returns jsonb
-language plpgsql
-security definer
-as $$
-declare
-  current_metadata jsonb;
-  updated_metadata jsonb;
-begin
-  -- Fetch current metadata
-  select raw_user_meta_data
-  into current_metadata
-  from auth.users
-  where id = user_id;
-
-  -- Merge welcome_email_at: now() into metadata
-  updated_metadata := coalesce(current_metadata, '{}'::jsonb)
-                      || jsonb_build_object('welcome_email_at', now());
-
-  -- Update the user's metadata
-  update auth.users
-  set raw_user_meta_data = updated_metadata
-  where id = user_id;
-
-  -- Return the updated metadata
-  return updated_metadata;
-end;
-$$;
--- endregion
-
--- Function to call webhook for email confirm
+-- Function to be call after email confirm, webhook for Welcome email.
 CREATE TRIGGER "email_confirmed_webhook_trigger"
 AFTER UPDATE ON auth.users
 FOR EACH ROW
 WHEN (OLD.email_confirmed_at IS NULL AND NEW.email_confirmed_at IS NOT NULL)
 EXECUTE FUNCTION supabase_functions.http_request(
-  'https://10f598ed6e4b.ngrok-free.app/api/v1/webhook-user',
+  'https://api.ijewel.design/api/v1/webhook-user'
+--   'https://roaoknzxojgcddxolavy.supabase.co/api/v1/webhook-user'
   'POST',
   '{"Content-type":"application/json"}',
   '{}',
   '5000'
 );
-
 -- endregion
-
 
 -- region Util Functions
 
