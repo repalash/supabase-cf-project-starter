@@ -1,6 +1,6 @@
 
 import { ResendSendEmailProps } from './resend';
-import welcomeMailTemplate from '../../../../email-templates/welcome.html'
+import welcomeMailTemplate from './resendTemplates/welcome.html'
 
 export const globalConfig = {
 	// EMAIL_GLOBAL_VARIABLES: {
