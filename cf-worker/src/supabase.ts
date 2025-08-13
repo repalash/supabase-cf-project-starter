@@ -12,9 +12,10 @@ export class SupabaseWrapper{
 		const res = await fetch(this.request.url.replace(url.origin, this.env.SUPABASE_URL), {
 			body: this.request.body,
 			headers,
-			method: this.request.method
+			method: this.request.method,
+			redirect: "manual"
 		});
-		return res;
+		return res as any as Response;
 	}
 
 	async authHeaders(cType = '', admin = false){
@@ -44,7 +45,7 @@ export class SupabaseWrapper{
 			headers: await this.authHeaders('application/json', admin),
 			body: JSON.stringify(ops)
 		});
-		return res;
+		return res as any as Response;
 	}
 
 	async restGet(query: string){
@@ -53,7 +54,7 @@ export class SupabaseWrapper{
 			method: 'GET',
 			headers: await this.authHeaders()
 		})
-		return res;
+		return res as any as Response;
 	}
 
 	async getUserAsset(assetPath: string){
@@ -87,6 +88,7 @@ export class SupabaseWrapper{
 		user_username?: string,
 		user_website?: string,
 		user_avatar_url?: string,
+		user_cover_url?: string,
 		user_bio?: string,
 	}) {
 		return this.rpcPost('update_profile', ops);
@@ -127,7 +129,7 @@ export class SupabaseWrapper{
 		});
 	}
 
-	async deleteUserAsset(ops: {asset_name: string}) {
+	async deleteUserAsset(ops: {asset_name: string, asset_owner_id: string}) {
 		return this.rpcPost('delete_user_asset', ops, true);
 	}
 

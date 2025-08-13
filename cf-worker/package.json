@@ -11,6 +11,7 @@
 		"@cloudflare/workers-types": "^4.20240614.0",
 		"@tsndr/cloudflare-worker-jwt": "^2.5.3",
 		"typescript": "^5.4.5",
-		"wrangler": "^3.60.3"
+		"wrangler": "^3.60.3",
+		"stripe": "^15.12.0"
 	}
 }

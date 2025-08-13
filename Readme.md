@@ -112,6 +112,29 @@ For local development create a `.dev.vars` with the secret:
 echo "SUPABASE_JWT_SECRET=<jwt_secret>" > .dev.vars
 ```
 
+## For stripe
+Set normal variables `STRIPE_DOMAIN_VERIFY`(whitelist for redirect url) and `STRIPE_prod_id=premium` in wrangler.toml
+
+`STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` has to be set as an encrypted value in the cloudflare dashboard or via cli(after first deployment).
+
+It has to be set for every environment(like staging)
+
+To set it via cli (do this after first deployment), run:
+```sh
+wrangler secret put STRIPE_SECRET_KEY
+wrangler secret put STRIPE_SECRET_KEY --env staging
+```
+```sh
+wrangler secret put STRIPE_WEBHOOK_SECRET
+wrangler secret put STRIPE_WEBHOOK_SECRET --env staging
+```
+
+For local development create a `.dev.vars` with the secret:
+```sh
+echo "STRIPE_SECRET_KEY=<secret>" >> .dev.vars
+echo "STRIPE_WEBHOOK_SECRET=<secret>" >> .dev.vars
+```
+
 ## Test the worker locally 
     
 ```sh
@@ -210,6 +233,7 @@ The API works similar to the user_asset endpoint.
 For user assets: `/api/v1/image/<filePath>`
 
 For user profile avatars: `/api/v1/image/.profiles/<userId>`
+For user profile covers: `/api/v1/image/.profiles/<userId>/cover`
 
 For project posters: `/api/v1/image/.projects/<projectId>`
 

@@ -1,6 +1,6 @@
 export const corsHeaders = {
 	"Access-Control-Allow-Origin": "*",
-	"Access-Control-Allow-Methods": "GET,HEAD,POST,PUT,DELETE,OPTIONS",
+	"Access-Control-Allow-Methods": "GET,HEAD,POST,PATCH,PUT,DELETE,OPTIONS",
 	"Access-Control-Max-Age": "86400",
 }
 export function handleOptions(request: Request, allowMethods = 'GET, HEAD, POST, PUT, DELETE, OPTIONS') {
