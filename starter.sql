@@ -928,6 +928,21 @@ END;
 $$ LANGUAGE plpgsql security definer;
 -- endregion
 
+-- Function to be call after email confirm, webhook for Welcome email.
+CREATE TRIGGER "email_confirmed_webhook_trigger"
+AFTER UPDATE ON auth.users
+FOR EACH ROW
+WHEN (OLD.email_confirmed_at IS NULL AND NEW.email_confirmed_at IS NOT NULL)
+EXECUTE FUNCTION supabase_functions.http_request(
+  'https://api.ijewel.design/api/v1/webhook-user'
+--   'https://roaoknzxojgcddxolavy.supabase.co/api/v1/webhook-user'
+  'POST',
+  '{"Content-type":"application/json"}',
+  '{}',
+  '5000'
+);
+-- endregion
+
 -- region Util Functions
 
 create or replace function get_request_headers(header text)
@@ -1258,3 +1273,5 @@ begin
     create schema public;
 end;
 $$ language plpgsql security definer;
+
+-- endregion

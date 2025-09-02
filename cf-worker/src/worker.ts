@@ -14,6 +14,7 @@ import { UserAssetOps } from './userAssetOps';
 import { R2Wrapper } from './r2';
 import { ManagedImageOps } from './managedImageOps';
 import {handleCreateCheckoutSession, handleCreatePortalSession, handleStripeWebhook} from "./stripe";
+import { sendWelcomeEmail } from './email/send-email';
 
 export interface Env {
 
@@ -71,12 +72,28 @@ async function handleRequest_(request: Request, env: Env) {
 		response = await db.proxy(url);
 
 	} else if (path.startsWith('/api/')) {
-
 		const pathE = path.split('/');
 		const version = pathE[2];
 
 		if (version === 'v1') {
 			const action = pathE[3];
+
+			if (action === 'webhook-user') {
+				const response = new Response('{}', { status: 200 });
+				const body = (await request.json()) as any;
+				if (body.type !== 'UPDATE') return response;
+
+				const oldRecord = body.old_record,
+					newRecord = body.record,
+					email = newRecord.email;
+					
+				if (oldRecord.email_confirmed_at == null && newRecord.email_confirmed_at) {
+					await sendWelcomeEmail(env as any, email);
+				}
+
+				return new Response('{}', { status: 200 });
+			}
+
 			const uid = await handleJwtAuth(request, env.SUPABASE_JWT_SECRET);
 
 			const r2 = new R2Wrapper(env.USER_ASSETS_BUCKET_1)
