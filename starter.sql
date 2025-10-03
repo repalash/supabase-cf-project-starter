@@ -1245,6 +1245,9 @@ create index on project_likes (user_id);
 
 -- create index on user_notifications (user_id);
 
+CREATE INDEX idx_projects_like_count_desc ON projects (like_count DESC);
+CREATE INDEX idx_projects_tags_gin ON projects USING GIN (tags);
+
 
 -- endregion
 
