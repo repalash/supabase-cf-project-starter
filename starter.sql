@@ -40,7 +40,8 @@ create table public.user_meta
     updated_at      timestamp with time zone                     not null default now(),
     notification     jsonb                                        not null default '{}'::jsonb, -- notification settings
     username_history text[]                                      not null default '{}'::text[], -- username history
-    last_username_change timestamp with time zone default now() not null
+    last_username_change timestamp with time zone default now() not null,
+    customer         jsonb                                       default null -- { "provider": "stripe", "id": "cus_..." }
 );
 
 
@@ -796,6 +797,26 @@ begin
     where id = auth.uid()
     returning * into profile;
     return profile;
+end;
+$$ language plpgsql security definer;
+
+-- Function to get user meta customer
+create or replace function public.get_user_meta_customer(user_id uuid)
+    returns jsonb as
+$$
+begin
+    return (select customer from user_meta where id = user_id);
+end;
+$$ language plpgsql security definer;
+
+-- Function to update user meta customer
+create or replace function public.update_user_meta_customer(user_id uuid, customer_data jsonb)
+    returns void as
+$$
+begin
+    update user_meta
+    set customer = customer_data
+    where id = user_id;
 end;
 $$ language plpgsql security definer;
 
