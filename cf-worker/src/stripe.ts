@@ -57,6 +57,12 @@ async function updateSubscription(subscription: Stripe.Subscription, c: Context)
 			return Response.json({message: 'Failed to set plan for profile'}, {status: 500})
 		}
 		result = `Updated profile (${resp.id}:${email}) to ${product_plan} till ${new Date(expire * 1000).toISOString()}`
+		
+		// Link customer if not already linked
+		await supabase.rpcPost('update_user_meta_customer', {
+			user_id: resp.id,
+			customer_data: { provider: 'stripe', id: customerId }
+		}, true)
 	}else if(isExpiredOrEnded){
 		// todo check any other active subscriptions in stripe, is if_current_plan enough?
 		const res = await supabase.rpcPost('expire_profile_plan', {
@@ -157,6 +163,11 @@ export async function handleCreateCheckoutSession(request: Request, env: Env, ui
 	if(!uidEmail.ok) console.log('failed to get email for uid', uid, email1, await uidEmail.text()) // todo remove later.
 	console.log('got email from db for uid', email1) // todo remove later.
 
+	// Check for stripe customer
+	const stripeCustomerRes = await supabase.rpcPost('get_user_meta_customer', { user_id: uid }, true)
+	const stripeCustomer = stripeCustomerRes.ok ? await stripeCustomerRes.json() as any : null
+	let customerId = stripeCustomer?.provider === 'stripe' ? stripeCustomer.id : undefined;
+
 	const stripe = new Stripe(env.STRIPE_SECRET_KEY)
 	const formData = await request.formData()
 	const user_email = formData.get('email') // we don-t really need this from frontend
@@ -177,11 +188,23 @@ export async function handleCreateCheckoutSession(request: Request, env: Env, ui
 	});
 
 	// get existing customer, this is required because stipe can create multiple customers for an email.
-	const customers = await stripe.customers.list({email: user_email, limit: 2})
-	const customer = customers.data[0]?.id
-	if(customers.data.length > 1) console.error('SUBSCRIPTION_AUTH_STRIPE: Multiple customers found for email', user_email, customer)
+	if (!customerId) {
+		const customers = await stripe.customers.list({email: user_email, limit: 2})
+		const foundCustomer = customers.data[0]?.id
+		if(customers.data.length > 1) console.error('SUBSCRIPTION_AUTH_STRIPE: Multiple customers found for email', user_email, foundCustomer)
+		
+		if (foundCustomer) {
+			customerId = foundCustomer;
+			// Link it
+			await supabase.rpcPost('update_user_meta_customer', {
+				user_id: uid,
+				customer_data: { provider: 'stripe', id: customerId }
+			}, true)
+		}
+	}
+
 	const customerData: Pick<Stripe.Checkout.SessionCreateParams, 'customer'|'customer_email'> = {}
-	if(customer) customerData.customer = customer;
+	if(customerId) customerData.customer = customerId;
 	else customerData.customer_email = user_email;
 
 	const session = await stripe.checkout.sessions.create({
@@ -232,10 +255,26 @@ export async function handleCreatePortalSession(request: Request, env: Env, uid:
 	if(!user_email /*|| !lookup_key*/ || !return_url) return Response.json({message: 'Invalid form data'}, {status: 400})
 	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) return Response.json({message: 'Invalid return url'}, {status: 400})
 
+	// Check for linked customer
+	const stripeCustomerRes = await supabase.rpcPost('get_user_meta_customer', { user_id: uid }, true)
+	const stripeCustomer = stripeCustomerRes.ok ? await stripeCustomerRes.json() as any : null
+	let customer = stripeCustomer?.provider === 'stripe' ? stripeCustomer.id : undefined;
+
 	// get existing customer, this is required because stripe can create multiple customers for an email.
-	const customers = await stripe.customers.list({email: user_email, limit: 2})
-	const customer = customers.data[0]?.id
-	if(customers.data.length > 1) console.error('SUBSCRIPTION_AUTH_STRIPE: Multiple customers found for email', user_email, customer)
+	if (!customer) {
+		const customers = await stripe.customers.list({email: user_email, limit: 2})
+		customer = customers.data[0]?.id
+		if(customers.data.length > 1) console.error('SUBSCRIPTION_AUTH_STRIPE: Multiple customers found for email', user_email, customer)
+		
+		if (customer) {
+			// Link it
+			await supabase.rpcPost('update_user_meta_customer', {
+				user_id: uid,
+				customer_data: { provider: 'stripe', id: customer }
+			}, true)
+		}
+	}
+	
 	if(!customer) return Response.json({message: 'Customer not found'}, {status: 400})
 
 	const session = await stripe.billingPortal.sessions.create({
