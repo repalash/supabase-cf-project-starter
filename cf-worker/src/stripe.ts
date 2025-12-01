@@ -2,14 +2,22 @@ import {Env} from "./worker";
 import Stripe from "stripe";
 import {SupabaseWrapper} from "./supabase";
 import {corsHeaders} from "./cors";
+import {discordNotify} from "./discordNotify";
 
-async function updateSubscription(subscription: Stripe.Subscription, c: Context) {
-	const itemData = (subscription.items.data[0]||subscription.items.data['0'])
-	if(!itemData) {
+function getItemData(subscription: Stripe.Subscription) {
+	const itemData = subscription.items.data[0] || subscription.items.data['0']
+	if (!itemData) {
 		console.error('No item found in subscription', subscription.id)
+		return null
+	}
+	return itemData
+}
+async function updateSubscription(subscription: Stripe.Subscription, c: Context) {
+	const itemData = getItemData(subscription)
+	if(!itemData) {
 		return Response.json({message: 'No item found in subscription'}, {status: 400})
 	}
-	const product = subscription.items.data[0].plan.product
+	const product = itemData.plan.product
 	const productId = typeof product === 'string' ? product : product?.id
 	// if (!productId?.startsWith('prod_')) {
 	// 	console.log('Invalid product id', productId)
@@ -18,7 +26,7 @@ async function updateSubscription(subscription: Stripe.Subscription, c: Context)
 
 	// using lookup key
 	// using lookup key (should not use lookup_key here as it can be assigned to another price, so it will be empty here.
-	const lookupKey = subscription.items.data[0].price.lookup_key || ''
+	const lookupKey = itemData.price.lookup_key || ''
 
 	// @ts-ignore
 	const product_plan = productId ? c.env['STRIPE_'+productId] : c.env['STRIPE_'+lookupKey] // STRIPE_lookup_key = 'plan_name'
@@ -27,21 +35,68 @@ async function updateSubscription(subscription: Stripe.Subscription, c: Context)
 		console.warn('Invalid product id, unable to find product by lookup key', lookupKey)
 		return Response.json({received: true, message: "Ignored Product"}, {status: 200}) // returning 200 as we don't want to retry webhook
 	}
-	const subId = subscription.id
-	const expire = subscription.current_period_end
+
+	// get the customer details
 	const customer1 = subscription.customer
 	const customerId = typeof customer1 === 'string' ? customer1 : customer1.id
 	if (!customerId) return Response.json({message: 'Expected string customer id, got object/null'}, {status: 400})
-	const customer = await c.stripe.customers.retrieve(customerId)
+	const customer = await c.stripe.customers.retrieve(customerId, {expand: ['subscriptions']})
 	if (!customer.id) return Response.json({message: 'Unable to find customer with ID'}, {status: 400})
 	if(customer.deleted) return Response.json({message: 'Customer has been deleted'}, {status: 400})
 	if(!customer.email) return Response.json({message: 'Customer email not found'}, {status: 400})
 	const email = customer.email
+
+	const subId = subscription.id
+	const expire = subscription.current_period_end
 	const supabase = new SupabaseWrapper(c.env, c.req)
 	const status = subscription.status
 	const isActive = status === 'active'
 	// todo check for any other active subscription before expiring.
-	const isExpiredOrEnded = !isActive && status !== 'trialing' && !status.includes('incomplete')
+	const isExpiredOrEnded = status === 'canceled' || status === 'unpaid'
+
+	const userSubs = customer.subscriptions?.data
+	if (customer.subscriptions?.has_more) {
+		// todo notify admin
+	}
+
+	const products = {
+		'premium': 'prod_QMNSxgs7RnrtOT',
+		'business': 'prod_RWBVrGfNRCqTIH',
+	}
+
+	const businessSubs = userSubs?.filter(sub => sub.id !== subscription.id && getItemData(sub)?.plan.product === products.business && (sub.status === 'active' || sub.status === 'trialing')) || []
+	const premiumSubs = userSubs?.filter(sub => sub.id !== subscription.id && getItemData(sub)?.plan.product === products.premium && (sub.status === 'active' || sub.status === 'trialing')) || []
+	const firstSub = businessSubs[0] || premiumSubs[0]
+	if (firstSub) {
+		// if first sub is higher than new sub, then ignore new sub and keep the subscription
+		// if first sub is lower than new sub, then continue and update the subscription with new sub
+		// notify admin
+		const firstSubLevel = firstSub === businessSubs[0] ? 2 : 1
+		const newSubLevel = product_plan === 'business' ? 2 : 1
+		if(isExpiredOrEnded || firstSubLevel > newSubLevel) {
+			const message = !isExpiredOrEnded ?
+				'Ignoring new subscription as it is lower than existing subscription' :
+				'Ignoring expired subscription as another active subscription in account'
+			// console.log(message, firstSub.id, subscription.id)
+			await discordNotify(`iJewel Design - MULTIPLE SUBSCRIPTIONS - ${message}`, [
+				new File([JSON.stringify(subscription)], 'new_subscription.json'),
+				new File([JSON.stringify([...businessSubs, ...premiumSubs])], 'existing_subscription.json'),
+			])
+			return Response.json({received: true, message: "Ignored Product"}, {status: 200}) // returning 200 as we don't want to retry webhook
+		}else{
+			console.log('Ignoring old subscription as it is lower than new subscription', firstSub.id, subscription.id)
+			c.ctx.waitUntil(discordNotify('iJewel Design - MULTIPLE SUBSCRIPTIONS - Ignoring old subscription as it is lower than new subscription', [
+				new File([JSON.stringify(subscription)], 'new_subscription.json'),
+				new File([JSON.stringify([...businessSubs, ...premiumSubs])], 'existing_subscription.json'),
+			]))
+		}
+	}else if(!isExpiredOrEnded && businessSubs.length + premiumSubs.length > 0){
+		c.ctx.waitUntil(discordNotify('iJewel Design - MULTIPLE SUBSCRIPTIONS - User has multiple subscriptions', [
+			new File([JSON.stringify(subscription)], 'new_subscription.json'),
+			new File([JSON.stringify([...businessSubs, ...premiumSubs])], 'existing_subscription.json'),
+		]))
+	}
+
 	let result = ''
 	if(isActive) {
 		const res = await supabase.rpcPost('update_profile_plan', {
@@ -57,7 +112,7 @@ async function updateSubscription(subscription: Stripe.Subscription, c: Context)
 			return Response.json({message: 'Failed to set plan for profile'}, {status: 500})
 		}
 		result = `Updated profile (${resp.id}:${email}) to ${product_plan} till ${new Date(expire * 1000).toISOString()}`
-		
+
 		// Link customer if not already linked
 		await supabase.rpcPost('update_user_meta_customer', {
 			user_id: resp.id,
@@ -77,7 +132,16 @@ async function updateSubscription(subscription: Stripe.Subscription, c: Context)
 			return Response.json({message: 'Failed to update profile to free plan'}, {status: 500})
 		}
 		result = `Expired profile (${resp.id}:${email}) from ${product_plan}`
-	}
+	}else if(subscription.status === 'past_due') {
+		result = `Subscription is in grace period (${email}) for ${product_plan}`
+	}/*else {
+		result = 'Ignoring subscription as it is not active or expired'
+	}*/
+	if(result.length)
+		c.ctx.waitUntil(discordNotify(`iJewel Design - ${result}`, [
+			// new File([JSON.stringify(subscription)], 'new_subscription.json'),
+			// new File([JSON.stringify([...businessSubs, ...premiumSubs])], 'existing_subscription.json'),
+		]))
 	return Response.json({received: true, message: result}, {status: 200})
 }
 
@@ -130,8 +194,9 @@ interface Context{
 	env: Env
 	req: Request
 	event: Stripe.Event
+	ctx: ExecutionContext
 }
-export async function handleStripeWebhook(request: Request, env: Env) {
+export async function handleStripeWebhook(request: Request, env: Env, ctx: ExecutionContext) {
 	const stripe = new Stripe(env.STRIPE_SECRET_KEY)
 	if(!env.STRIPE_WEBHOOK_SECRET)
 		// throw new HTTPException(500, {message: 'Invalid configuration'})
@@ -150,7 +215,7 @@ export async function handleStripeWebhook(request: Request, env: Env) {
 		console.error(`⚠️  Webhook signature verification failed.`, (err as any)?.message);
 		return Response.json({message: 'Webhook signature verification failed'}, {status: 400})
 	}
-	return await handleWebhookEvent({stripe, env, req: request, event})
+	return await handleWebhookEvent({stripe, env, req: request, event, ctx})
 }
 
 async function initStripeUser(supabase: SupabaseWrapper, stripe: Stripe, uid: string, formEmail?: string) {
@@ -193,11 +258,11 @@ export async function handleCreateCheckoutSession(request: Request, env: Env, ui
 
 	const supabase = new SupabaseWrapper(env, request)
 	const stripe = new Stripe(env.STRIPE_SECRET_KEY)
-	
+
 	const userResult = await initStripeUser(supabase, stripe, uid)
 	if(userResult instanceof Response) return userResult
 	const { email: user_email, customerId } = userResult
-	
+
 	const formData = await request.formData()
 	const lookup_key = formData.get('lookup_key')
 	const return_url = formData.get('return_url')
@@ -243,7 +308,7 @@ export async function handleCreatePortalSession(request: Request, env: Env, uid:
 
 	const supabase = new SupabaseWrapper(env, request)
 	const stripe = new Stripe(env.STRIPE_SECRET_KEY)
-	
+
 	const userResult = await initStripeUser(supabase, stripe, uid)
 	if(userResult instanceof Response) return userResult
 	const { customerId: customer } = userResult
@@ -254,7 +319,7 @@ export async function handleCreatePortalSession(request: Request, env: Env, uid:
 	const return_url = formData.get('return_url')
 	if(!return_url) return Response.json({message: 'Invalid form data'}, {status: 400})
 	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) return Response.json({message: 'Invalid return url'}, {status: 400})
-	
+
 
 	const session = await stripe.billingPortal.sessions.create({
 		customer,

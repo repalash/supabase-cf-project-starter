@@ -7,13 +7,14 @@
  *
  * Learn more at https://developers.cloudflare.com/workers/
  */
-import { digestMessage, handleJwtAuth } from './auth';
-import { corsHeaders, handleOptions } from './cors';
-import { SupabaseWrapper } from './supabase';
-import { UserAssetOps } from './userAssetOps';
-import { R2Wrapper } from './r2';
-import { ManagedImageOps } from './managedImageOps';
+import {handleJwtAuth} from './auth';
+import {corsHeaders, handleOptions} from './cors';
+import {SupabaseWrapper} from './supabase';
+import {UserAssetOps} from './userAssetOps';
+import {R2Wrapper} from './r2';
+import {ManagedImageOps} from './managedImageOps';
 import {handleCreateCheckoutSession, handleCreatePortalSession, handleStripeWebhook} from "./stripe";
+import {discordNotify} from "./discordNotify";
 
 export interface Env {
 
@@ -58,7 +59,7 @@ export function getAssetType(url: URL, request: Request){
 	return url.searchParams.get('type') || request.headers.get('content-type') || 'application/octet-stream';
 }
 
-async function handleRequest_(request: Request, env: Env) {
+async function handleRequest_(request: Request, env: Env, ctx: ExecutionContext) {
 	const url = new URL(request.url);
 	const path = url.pathname;
 	const method = request.method;
@@ -114,7 +115,14 @@ async function handleRequest_(request: Request, env: Env) {
 
 		// if (webhook === 'stripe_webhook_nc7dhaug1ff') {
 		if (webhook === env.STRIPE_WEBHOOK_ENDPOINT) {
-			response = await handleStripeWebhook(request, env);
+			try {
+				response = await handleStripeWebhook(request, env, ctx);
+			}catch (e) {
+				ctx.waitUntil(discordNotify('iJewel Design - Error in stripe webhook - ' + ((e as any)?.message??'Unknown error'), [
+					new File([(e as any)?.stack], 'error.txt'),
+				]))
+				throw e;
+			}
 		}
 
 	} else if (path.startsWith('/billing/')) {
@@ -149,9 +157,17 @@ export default {
 
 		try{
 
-			let response = await handleRequest_(request, env);
+			let response = await handleRequest_(request, env, ctx);
 
 			if(!response) return new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain', ...corsHeaders } });
+
+			const referer = request.headers.get("referer");
+			const origin = request.headers.get("origin");
+			const fetchSite = request.headers.get("sec-fetch-site");
+			const fetchMode = request.headers.get("sec-fetch-mode");
+			if ((!referer && !origin) || fetchSite === "none" || fetchMode === "navigate") {
+				return response;
+			}
 
 			response = new Response(response.body, response);
 
