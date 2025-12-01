@@ -801,17 +801,17 @@ end;
 $$ language plpgsql security definer;
 
 -- Function to get user meta customer
-create or replace function public.get_user_meta_customer(user_id uuid)
-    returns jsonb as
-$$
-begin
-    if auth.role() != 'service_role' then
-        raise exception 'User is not authenticated';
-    end if;
-    
-    return (select customer from user_meta where id = user_id);
-end;
-$$ language plpgsql security definer;
+-- create or replace function public.get_user_meta_customer(user_id uuid)
+--     returns jsonb as
+-- $$
+-- begin
+--     if auth.role() != 'service_role' then
+--         raise exception 'User is not authenticated';
+--     end if;
+--
+--     return (select customer from user_meta where id = user_id);
+-- end;
+-- $$ language plpgsql security definer;
 
 -- Function to update user meta customer
 create or replace function public.update_user_meta_customer(user_id uuid, customer_data jsonb)
@@ -1036,30 +1036,6 @@ begin
 end;
 $$ language plpgsql security invoker stable;
 
--- Function to get the top project owners based on the number of projects they own.
-CREATE FUNCTION public.get_top_public_project_owners(limit_count integer DEFAULT 10) RETURNS TABLE(id uuid, username text, avatar_url text, project_count bigint)
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
-RETURN QUERY
-SELECT
-    u.id,
-    u.username,
-    u.avatar_url,
-    COUNT(p.id) AS project_count
-FROM
-    profiles u
-        JOIN projects p ON u.id = p.owner_id
-WHERE
-    p.is_private = FALSE
-GROUP BY
-    u.id, u.username
-ORDER BY
-    project_count DESC
-    LIMIT
-        limit_count;
-END;
-$$;
 -- endregion
 
 -- endregion
@@ -1303,13 +1279,88 @@ CREATE INDEX idx_projects_tags_gin ON projects USING GIN (tags);
 
 -- endregion
 
+CREATE MATERIALIZED VIEW top_public_project_owners AS
+SELECT owner_id, COUNT(*) AS project_count
+FROM projects
+WHERE is_private = FALSE
+GROUP BY owner_id;
+
+-- keep it fresh
+CREATE UNIQUE INDEX idx_top_public_project_owners
+    ON top_public_project_owners (owner_id);
+create extension if not exists pg_cron;
+
+-- schedule daily refresh at midnight UTC
+select cron.schedule(
+               'refresh_top_public_project_owners',
+               '0 0 * * *',
+               $$ REFRESH MATERIALIZED VIEW CONCURRENTLY top_public_project_owners; $$
+);
+-- Function to get the top project owners based on the number of projects they own.
+CREATE or replace FUNCTION public.get_top_public_project_owners(limit_count integer DEFAULT 10) RETURNS TABLE(id uuid, username text, avatar_url text, project_count bigint)
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+RETURN QUERY
+SELECT u.id, u.username, u.avatar_url, t.project_count
+FROM profiles u
+         JOIN top_public_project_owners t ON u.id = t.owner_id
+ORDER BY t.project_count DESC
+    LIMIT limit_count;
+END;
+$$;
 
 -- Function to clear the db of all data and tables etc
-create or replace function public.clear_db()
-    returns void as
-$$
-begin
-    drop schema public cascade;
-    create schema public;
-end;
-$$ language plpgsql security definer;
+-- create or replace function public.clear_db()
+--     returns void as
+-- $$
+-- begin
+--     drop schema public cascade;
+--     create schema public;
+-- end;
+-- $$ language plpgsql security definer;
+
+
+create table public.projects_deleted (
+     id uuid not null default extensions.uuid_generate_v4 (),
+     slug text not null,
+     updated_at timestamp with time zone not null default now(),
+     created_at timestamp with time zone not null default now(),
+     name text not null default 'Untitled Project'::text,
+     description text null,
+     is_private boolean not null default true,
+     is_template boolean not null default false,
+     owner_id uuid not null,
+     editors uuid[] not null default '{}'::uuid[],
+     viewers uuid[] not null default '{}'::uuid[],
+     project_data jsonb not null default '{}'::jsonb,
+     tags text[] null default '{}'::text[],
+     poster_url text null,
+     user_editing uuid null,
+     user_editing_at timestamp with time zone null,
+     deleted_at timestamp with time zone null,
+     owner_username text null,
+     like_count integer not null default 0,
+     constraint projects_deleted_pkey primary key (id),
+     constraint projects_deleted_slug_key unique (slug),
+     constraint projects_deleted_owner_id_fkey foreign KEY (owner_id) references auth.users (id) on delete CASCADE,
+     constraint projects_deleted_owner_id_fkey1 foreign KEY (owner_id) references profiles (id),
+     constraint projects_deleted_user_editing_fkey foreign KEY (user_editing) references auth.users (id) on delete set null,
+     constraint slug_length check ((char_length(slug) >= 3))
+) TABLESPACE pg_default;
+
+create index IF not exists projects_deleted_slug_idx on public.projects_deleted using btree (slug) TABLESPACE pg_default;
+
+create index IF not exists projects_deleted_owner_id_idx on public.projects_deleted using btree (owner_id) TABLESPACE pg_default;
+
+create index IF not exists projects_deleted_editors_idx on public.projects_deleted using btree (editors) TABLESPACE pg_default;
+
+create index IF not exists projects_deleted_viewers_idx on public.projects_deleted using btree (viewers) TABLESPACE pg_default;
+
+create index IF not exists projects_deleted_owner_username_idx on public.projects_deleted using btree (owner_username) TABLESPACE pg_default;
+
+create index IF not exists projects_deleted_created_at_idx on public.projects_deleted using btree (created_at) TABLESPACE pg_default;
+
+create index IF not exists projects_deleted_like_count_idx on public.projects_deleted using btree (like_count desc) TABLESPACE pg_default;
+
+create index IF not exists projects_deleted_tags_idx on public.projects_deleted using gin (tags) TABLESPACE pg_default;
