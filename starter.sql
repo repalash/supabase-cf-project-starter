@@ -849,23 +849,38 @@ $$ language plpgsql security definer;
 create or replace function public.update_profile_plan(
     user_email text,
     user_plan text,
-    user_plan_expiry numeric -- in seconds
+    user_plan_expiry numeric, -- in seconds
+    stripe_customer_id text default null
 )
     returns profiles as
 $$
 declare
     profile profiles;
+    uid uuid;
 begin
     -- Check if user has permission to update asset only service_role. TODO: make a new service role for stripe and use that
     if auth.role() != 'service_role' then
         raise exception 'User is not authenticated';
     end if;
 
+    -- Get user id from email
+    select id into uid from auth.users au where au.email = user_email;
+
+    -- Update the profile plan
     update profiles
     set plan = user_plan,
         plan_expiry = to_timestamp(user_plan_expiry)
-    where id = (select id from auth.users au where au.email = user_email)
+    where id = uid
     returning * into profile;
+
+    -- Update user_meta customer if stripe_customer_id is provided and customer is not already linked
+    if stripe_customer_id is not null then
+        update user_meta
+        set customer = jsonb_build_object('provider', 'stripe', 'id', stripe_customer_id)
+        where id = uid
+          and (customer is null or customer->>'id' is null);
+    end if;
+
     return profile;
 end;
 $$ language plpgsql security definer; -- note that this is definer

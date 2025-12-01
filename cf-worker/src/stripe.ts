@@ -103,6 +103,7 @@ async function updateSubscription(subscription: Stripe.Subscription, c: Context)
 			user_email: email,
 			user_plan: product_plan,
 			user_plan_expiry: expire,
+			stripe_customer_id: customerId,
 		}, true)
 		const resp = await res.json() as any
 		// console.log('response from update_plan', JSON.stringify(resp)) // todo check for fail and return with error
@@ -113,14 +114,14 @@ async function updateSubscription(subscription: Stripe.Subscription, c: Context)
 		}
 		result = `Updated profile (${resp.id}:${email}) to ${product_plan} till ${new Date(expire * 1000).toISOString()}`
 
-		// Link customer if not already linked
-		await supabase.rpcPost('update_user_meta_customer', {
+		// Link customer if not already linked - added to update_profile_plan
+		/*await supabase.rpcPost('update_user_meta_customer', {
 			user_id: resp.id,
 			customer_data: { provider: 'stripe', id: customerId }
-		}, true)
+		}, true)*/
 	}else if(isExpiredOrEnded){
 		// todo check any other active subscriptions in stripe, is if_current_plan enough?
-		const res = await supabase.rpcPost('expire_profile_plan', {
+		const res = await supabase.rpcPost('expire_profile_plan', { // todo update_user_meta_customer here?
 			user_email: email,
 			if_current_plan: product_plan,
 		}, true)
