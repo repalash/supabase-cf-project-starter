@@ -197,8 +197,6 @@ export async function handleCreateCheckoutSession(request: Request, env: Env, ui
 	const userResult = await initStripeUser(supabase, stripe, uid)
 	if(userResult instanceof Response) return userResult
 	const { email: user_email, customerId } = userResult
-
-	if(!user_email) return Response.json({message: 'User email not found'}, {status: 400})
 	
 	const formData = await request.formData()
 	const lookup_key = formData.get('lookup_key')
