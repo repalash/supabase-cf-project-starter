@@ -805,6 +805,10 @@ create or replace function public.get_user_meta_customer(user_id uuid)
     returns jsonb as
 $$
 begin
+    if auth.role() != 'service_role' then
+        raise exception 'User is not authenticated';
+    end if;
+    
     return (select customer from user_meta where id = user_id);
 end;
 $$ language plpgsql security definer;
@@ -814,6 +818,10 @@ create or replace function public.update_user_meta_customer(user_id uuid, custom
     returns void as
 $$
 begin
+    if auth.role() != 'service_role' then
+        raise exception 'User is not authenticated';
+    end if;
+
     update user_meta
     set customer = customer_data
     where id = user_id;
