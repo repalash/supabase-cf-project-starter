@@ -153,48 +153,30 @@ export async function handleStripeWebhook(request: Request, env: Env) {
 	return await handleWebhookEvent({stripe, env, req: request, event})
 }
 
-export async function handleCreateCheckoutSession(request: Request, env: Env, uid: string) {
-	// uid is required just from jwt to verify email is sent properly.
-	if(!uid) return new Response('Unauthorized', { status: 401, headers: { 'Content-Type': 'text/plain', ...corsHeaders } });
+async function initStripeUser(supabase: SupabaseWrapper, stripe: Stripe, uid: string, formEmail?: string) {
+	const res = await supabase.rpcPost('get_customer_details', { user_id: uid }, true)
+	if (!res.ok) {
+		console.error('Failed to get customer details', await res.text())
+		return Response.json({message: 'Failed to get customer details'}, {status: 500})
+	}
+	const data = await res.json() as { email: string, customer: { provider: string, id: string } | null }
+	const dbEmail = data.email
 
-	const supabase = new SupabaseWrapper(env, request)
-	const uidEmail = await supabase.rpcPost('get_email_for_uid', {user_id: uid}, true)
-	const email1 = uidEmail.ok ? (await uidEmail.text()) : ''
-	if(!uidEmail.ok) console.log('failed to get email for uid', uid, email1, await uidEmail.text()) // todo remove later.
-	console.log('got email from db for uid', email1) // todo remove later.
-
-	// Check for stripe customer
-	const stripeCustomerRes = await supabase.rpcPost('get_user_meta_customer', { user_id: uid }, true)
-	const stripeCustomer = stripeCustomerRes.ok ? await stripeCustomerRes.json() as any : null
-	let customerId = stripeCustomer?.provider === 'stripe' ? stripeCustomer.id : undefined;
-
-	const stripe = new Stripe(env.STRIPE_SECRET_KEY)
-	const formData = await request.formData()
-	const user_email = formData.get('email') // we don-t really need this from frontend
-
-	if(!user_email || !email1 || ("\""+user_email+"\"") !== email1) {
-		console.log('Invalid email', user_email, email1)
+	if (!dbEmail) return Response.json({message: 'User email not found'}, {status: 400})
+	if (formEmail && formEmail !== dbEmail) {
+		console.log('Invalid email', formEmail, dbEmail)
 		return Response.json({message: 'Invalid email'}, {status: 400})
 	}
 
-	const lookup_key = formData.get('lookup_key')
-	const return_url = formData.get('return_url')
-	if(!user_email || !lookup_key || !return_url) return Response.json({message: 'Invalid form data'}, {status: 400})
-	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) return Response.json({message: 'Invalid return url'}, {status: 400})
+	let customerId = data.customer?.id
 
-	const prices = await stripe.prices.list({
-		lookup_keys: [lookup_key],
-		expand: ['data.product'],
-	});
-
-	// get existing customer, this is required because stipe can create multiple customers for an email.
 	if (!customerId) {
-		const customers = await stripe.customers.list({email: user_email, limit: 2})
+		const customers = await stripe.customers.list({ email: dbEmail, limit: 2 })
 		const foundCustomer = customers.data[0]?.id
-		if(customers.data.length > 1) console.error('SUBSCRIPTION_AUTH_STRIPE: Multiple customers found for email', user_email, foundCustomer)
-		
+		if (customers.data.length > 1) console.error('SUBSCRIPTION_AUTH_STRIPE: Multiple customers found for email', dbEmail, foundCustomer)
+
 		if (foundCustomer) {
-			customerId = foundCustomer;
+			customerId = foundCustomer
 			// Link it
 			await supabase.rpcPost('update_user_meta_customer', {
 				user_id: uid,
@@ -202,6 +184,32 @@ export async function handleCreateCheckoutSession(request: Request, env: Env, ui
 			}, true)
 		}
 	}
+	return { email: dbEmail, customerId }
+}
+
+export async function handleCreateCheckoutSession(request: Request, env: Env, uid: string) {
+	// uid is required just from jwt to verify email is sent properly.
+	if(!uid) return new Response('Unauthorized', { status: 401, headers: { 'Content-Type': 'text/plain', ...corsHeaders } });
+
+	const supabase = new SupabaseWrapper(env, request)
+	const stripe = new Stripe(env.STRIPE_SECRET_KEY)
+	
+	const userResult = await initStripeUser(supabase, stripe, uid)
+	if(userResult instanceof Response) return userResult
+	const { email: user_email, customerId } = userResult
+
+	if(!user_email) return Response.json({message: 'User email not found'}, {status: 400})
+	
+	const formData = await request.formData()
+	const lookup_key = formData.get('lookup_key')
+	const return_url = formData.get('return_url')
+	if(!lookup_key || !return_url) return Response.json({message: 'Invalid form data'}, {status: 400})
+	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) return Response.json({message: 'Invalid return url'}, {status: 400})
+
+	const prices = await stripe.prices.list({
+		lookup_keys: [lookup_key],
+		expand: ['data.product'],
+	});
 
 	const customerData: Pick<Stripe.Checkout.SessionCreateParams, 'customer'|'customer_email'> = {}
 	if(customerId) customerData.customer = customerId;
@@ -236,46 +244,19 @@ export async function handleCreatePortalSession(request: Request, env: Env, uid:
 	if(!uid) return new Response('Unauthorized', { status: 401, headers: { 'Content-Type': 'text/plain', ...corsHeaders } });
 
 	const supabase = new SupabaseWrapper(env, request)
-	const uidEmail = await supabase.rpcPost('get_email_for_uid', {user_id: uid}, true)
-	const email1 = uidEmail.ok ? (await uidEmail.text()) : ''
-	if(!uidEmail.ok) console.log('failed to get email for uid', uid, email1, await uidEmail.text()) // todo remove later.
-	console.log('got email from db for uid', email1) // todo remove later.
-
 	const stripe = new Stripe(env.STRIPE_SECRET_KEY)
-	const formData = await request.formData()
-	const user_email = formData.get('email') // we don-t really need this from frontend
-
-	if(!user_email || !email1 || ("\""+user_email+"\"") !== email1) {
-		console.log('Invalid email', user_email, email1)
-		return Response.json({message: 'Invalid email'}, {status: 400})
-	}
-
-	// const lookup_key = formData.get('lookup_key')
-	const return_url = formData.get('return_url')
-	if(!user_email /*|| !lookup_key*/ || !return_url) return Response.json({message: 'Invalid form data'}, {status: 400})
-	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) return Response.json({message: 'Invalid return url'}, {status: 400})
-
-	// Check for linked customer
-	const stripeCustomerRes = await supabase.rpcPost('get_user_meta_customer', { user_id: uid }, true)
-	const stripeCustomer = stripeCustomerRes.ok ? await stripeCustomerRes.json() as any : null
-	let customer = stripeCustomer?.provider === 'stripe' ? stripeCustomer.id : undefined;
-
-	// get existing customer, this is required because stripe can create multiple customers for an email.
-	if (!customer) {
-		const customers = await stripe.customers.list({email: user_email, limit: 2})
-		customer = customers.data[0]?.id
-		if(customers.data.length > 1) console.error('SUBSCRIPTION_AUTH_STRIPE: Multiple customers found for email', user_email, customer)
-		
-		if (customer) {
-			// Link it
-			await supabase.rpcPost('update_user_meta_customer', {
-				user_id: uid,
-				customer_data: { provider: 'stripe', id: customer }
-			}, true)
-		}
-	}
 	
+	const userResult = await initStripeUser(supabase, stripe, uid)
+	if(userResult instanceof Response) return userResult
+	const { customerId: customer } = userResult
+
 	if(!customer) return Response.json({message: 'Customer not found'}, {status: 400})
+
+	const formData = await request.formData()
+	const return_url = formData.get('return_url')
+	if(!return_url) return Response.json({message: 'Invalid form data'}, {status: 400})
+	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) return Response.json({message: 'Invalid return url'}, {status: 400})
+	
 
 	const session = await stripe.billingPortal.sessions.create({
 		customer,

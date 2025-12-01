@@ -918,6 +918,29 @@ begin
 end;
 $$ language plpgsql security definer ;
 
+-- Function to get customer details (email and customer object from user_meta)
+create or replace function public.get_customer_details(user_id uuid)
+    returns jsonb as
+$$
+declare
+    result jsonb;
+begin
+    if auth.role() != 'service_role' then
+        raise exception 'User is not authenticated';
+    end if;
+
+    select jsonb_build_object(
+        'email', au.email,
+        'customer', um.customer
+    ) into result
+    from auth.users au
+    left join public.user_meta um on au.id = um.id
+    where au.id = user_id;
+
+    return result;
+end;
+$$ language plpgsql security definer;
+
 -- todo add some check or rate limit here?
 create or replace function public.check_user_exists(
     p_username text,
