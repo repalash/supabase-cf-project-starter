@@ -129,15 +129,24 @@ async function handleRequest_(request: Request, env: Env, ctx: ExecutionContext)
 
 		const pathE = path.split('/');
 		const endpoint = pathE[2];
+		try {
 
-		const uid = await handleJwtAuth(request, env.SUPABASE_JWT_SECRET);
+			const uid = await handleJwtAuth(request, env.SUPABASE_JWT_SECRET);
 
-		if (endpoint === 'checkout' && method === 'POST') {
-			response = await handleCreateCheckoutSession(request, env, uid);
+			if (endpoint === 'checkout' && method === 'POST') {
+				response = await handleCreateCheckoutSession(request, env, uid);
+			}
+			if (endpoint === 'portal' && method === 'POST') {
+				response = await handleCreatePortalSession(request, env, uid);
+			}
+
+		}catch (e) {
+			ctx.waitUntil(discordNotify(`iJewel Design - Error in billing/${endpoint} - ` + ((e as any)?.message??'Unknown error'), [
+				new File([(e as any)?.stack], 'error.txt'),
+			]))
+			throw e;
 		}
-		if (endpoint === 'portal' && method === 'POST') {
-			response = await handleCreatePortalSession(request, env, uid);
-		}
+
 	}
 	return response;
 }
