@@ -15,7 +15,7 @@ function getItemData(subscription: Stripe.Subscription) {
 async function updateSubscription(subscription: Stripe.Subscription, c: Context) {
 	const itemData = getItemData(subscription)
 	if(!itemData) {
-		return Response.json({message: 'No item found in subscription'}, {status: 400})
+		throw new HTTPException(400, {message: 'No item found in subscription'})
 	}
 	const product = itemData.plan.product
 	const productId = typeof product === 'string' ? product : product?.id
@@ -31,19 +31,18 @@ async function updateSubscription(subscription: Stripe.Subscription, c: Context)
 	// @ts-ignore
 	const product_plan = productId ? c.env['STRIPE_'+productId] : c.env['STRIPE_'+lookupKey] // STRIPE_lookup_key = 'plan_name'
 	if (!product_plan || typeof product_plan !== 'string' || !product_plan.length) {
-		// throw new HTTPException(400, {message: 'Invalid product id, unable to find product'})
 		console.warn('Invalid product id, unable to find product by lookup key', lookupKey)
-		return Response.json({received: true, message: "Ignored Product"}, {status: 200}) // returning 200 as we don't want to retry webhook
+		throw new HTTPException(200, {message: 'Invalid product id, unable to find product'})
 	}
 
 	// get the customer details
 	const customer1 = subscription.customer
 	const customerId = typeof customer1 === 'string' ? customer1 : customer1.id
-	if (!customerId) return Response.json({message: 'Expected string customer id, got object/null'}, {status: 400})
+	if (!customerId) throw new HTTPException(400, {message: 'Expected string customer id, got object/null'})
 	const customer = await c.stripe.customers.retrieve(customerId, {expand: ['subscriptions']})
-	if (!customer.id) return Response.json({message: 'Unable to find customer with ID'}, {status: 400})
-	if(customer.deleted) return Response.json({message: 'Customer has been deleted'}, {status: 400})
-	if(!customer.email) return Response.json({message: 'Customer email not found'}, {status: 400})
+	if (!customer.id) throw new HTTPException(400, {message: 'Unable to find customer with ID'})
+	if(customer.deleted) throw new HTTPException(400, {message: 'Customer has been deleted'})
+	if(!customer.email) throw new HTTPException(400, {message: 'Customer email not found'})
 	const email = customer.email
 
 	const subId = subscription.id
@@ -82,7 +81,8 @@ async function updateSubscription(subscription: Stripe.Subscription, c: Context)
 				new File([JSON.stringify(subscription)], 'new_subscription.json'),
 				new File([JSON.stringify([...businessSubs, ...premiumSubs])], 'existing_subscription.json'),
 			])
-			return Response.json({received: true, message: "Ignored Product"}, {status: 200}) // returning 200 as we don't want to retry webhook
+			// return Response.json({received: true, message: "Ignored Product"}, {status: 200}) // returning 200 as we don't want to retry webhook
+			throw new HTTPException(200, {message: 'Ignored Product'})
 		}else{
 			console.log('Ignoring old subscription as it is lower than new subscription', firstSub.id, subscription.id)
 			c.ctx.waitUntil(discordNotify('iJewel Design - MULTIPLE SUBSCRIPTIONS - Ignoring old subscription as it is lower than new subscription', [
@@ -108,9 +108,8 @@ async function updateSubscription(subscription: Stripe.Subscription, c: Context)
 		const resp = await res.json() as any
 		// console.log('response from update_plan', JSON.stringify(resp)) // todo check for fail and return with error
 		if (!res.ok || !resp?.id) {
-			// throw new HTTPException(500, {message: 'Failed to update profile'})
 			console.error('Failed to set plan for profile', JSON.stringify(resp))
-			return Response.json({message: 'Failed to set plan for profile'}, {status: 500})
+			throw new HTTPException(500, {message: 'Failed to set plan for profile'})
 		}
 		result = `Updated profile (${resp.id}:${email}) to ${product_plan} till ${new Date(expire * 1000).toISOString()}`
 
@@ -128,9 +127,8 @@ async function updateSubscription(subscription: Stripe.Subscription, c: Context)
 		const resp = await res.json() as any
 		// console.log('response from expire_profile_plan', JSON.stringify(resp)) // todo check for fail and return with error
 		if (!res.ok || !resp?.id) {
-			// throw new HTTPException(500, {message: 'Failed to update profile'})
 			console.error('Failed to update profile to free plan', email, JSON.stringify(resp))
-			return Response.json({message: 'Failed to update profile to free plan'}, {status: 500})
+			throw new HTTPException(500, {message: 'Failed to update profile to free plan'})
 		}
 		result = `Expired profile (${resp.id}:${email}) from ${product_plan}`
 	}else if(subscription.status === 'past_due') {
@@ -151,42 +149,58 @@ async function handleWebhookEvent(c: Context) {
 	let status: Stripe.Subscription.Status;
 	let result = Response.json({received: true}, {status: 200})
 	// Handle the event
-	switch (c.event.type) {
-		case 'customer.subscription.trial_will_end':
-			subscription = c.event.data.object;
-			status = subscription.status;
-			console.log(`[Unhandled]: trial_will_end Subscription ${subscription.id} status is ${status}`);
-			// Then define and call a method to handle the subscription trial ending.
-			// handleSubscriptionTrialEnding(subscription);
-			break;
-		case 'customer.subscription.deleted':
-			subscription = c.event.data.object;
-			status = subscription.status;
-			console.log(`deleted Subscription ${subscription.id} status is ${status}.`);
-			// deactivate the license key for subscription (inactive)
-			result = await updateSubscription(subscription, c)
-			break;
-		case 'customer.subscription.created':
-			subscription = c.event.data.object;
-			status = subscription.status;
-			console.log(`created Subscription ${subscription.id} status is ${status}.`);
-			result = await updateSubscription(subscription, c)
-			break;
-		case 'customer.subscription.updated':
-			subscription = c.event.data.object;
-			status = subscription.status;
-			console.log(`updated Subscription ${subscription.id} status is ${status}.`);
-			result = await updateSubscription(subscription, c)
-			break;
-		case 'entitlements.active_entitlement_summary.updated':
-			const summary = c.event.data.object;
-			console.log(`[Unhandled]: Active entitlement summary updated for ${JSON.stringify(summary)}.`);
-			// Then define and call a method to handle active entitlement summary updated
-			// handleEntitlementUpdated(subscription);
-			break;
-		default:
-			// Unexpected event type
-			console.log(`[Unhandled]: Unhandled event type ${c.event.type}.`);
+	try {
+		switch (c.event.type) {
+			case 'customer.subscription.trial_will_end':
+				subscription = c.event.data.object;
+				status = subscription.status;
+				console.log(`[Unhandled]: trial_will_end Subscription ${subscription.id} status is ${status}`);
+				// Then define and call a method to handle the subscription trial ending.
+				// handleSubscriptionTrialEnding(subscription);
+				break;
+			case 'customer.subscription.deleted':
+				subscription = c.event.data.object;
+				status = subscription.status;
+				console.log(`deleted Subscription ${subscription.id} status is ${status}.`);
+				// deactivate the license key for subscription (inactive)
+				result = await updateSubscription(subscription, c)
+				break;
+			case 'customer.subscription.created':
+				subscription = c.event.data.object;
+				status = subscription.status;
+				console.log(`created Subscription ${subscription.id} status is ${status}.`);
+				result = await updateSubscription(subscription, c)
+				break;
+			case 'customer.subscription.updated':
+				subscription = c.event.data.object;
+				status = subscription.status;
+				console.log(`updated Subscription ${subscription.id} status is ${status}.`);
+				result = await updateSubscription(subscription, c)
+				break;
+			case 'entitlements.active_entitlement_summary.updated':
+				const summary = c.event.data.object;
+				console.log(`[Unhandled]: Active entitlement summary updated for ${JSON.stringify(summary)}.`);
+				// Then define and call a method to handle active entitlement summary updated
+				// handleEntitlementUpdated(subscription);
+				break;
+			default:
+				// Unexpected event type
+				console.log(`[Unhandled]: Unhandled event type ${c.event.type}.`);
+		}
+		
+	} catch (error) {
+		console.error('Error processing webhook event:', error);
+		
+		ctx.waitUntil(discordNotify(`iJewel Design - Error processing webhook event`, [
+			new File([JSON.stringify(error)], 'error.json'),
+		]))
+
+		if(error instanceof HTTPException){
+			return Response.json({message: error.message}, {status: error.status})
+		}
+			
+
+		return Response.json({message: 'Error processing webhook event'}, {status: 500})
 	}
 	return result
 }
@@ -255,20 +269,22 @@ async function initStripeUser(supabase: SupabaseWrapper, stripe: Stripe, uid: st
 
 export async function handleCreateCheckoutSession(request: Request, env: Env, uid: string) {
 	// uid is required just from jwt to verify email is sent properly.
-	if(!uid) return new Response('Unauthorized', { status: 401, headers: { 'Content-Type': 'text/plain', ...corsHeaders } });
+	if(!uid) throw new HTTPException(401, {message: 'Unauthorized'})
 
 	const supabase = new SupabaseWrapper(env, request)
 	const stripe = new Stripe(env.STRIPE_SECRET_KEY)
 
 	const userResult = await initStripeUser(supabase, stripe, uid)
-	if(userResult instanceof Response) return userResult
+	if(userResult instanceof Response) {
+		throw new HTTPException(userResult.status, {message: userResult.statusText})
+	}
 	const { email: user_email, customerId } = userResult
 
 	const formData = await request.formData()
 	const lookup_key = formData.get('lookup_key')
 	const return_url = formData.get('return_url')
-	if(!lookup_key || !return_url) return Response.json({message: 'Invalid form data'}, {status: 400})
-	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) return Response.json({message: 'Invalid return url'}, {status: 400})
+	if(!lookup_key || !return_url) throw new HTTPException(400, {message: 'Invalid form data'})
+	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) throw new HTTPException(400, {message: 'Invalid return url'})
 
 	const prices = await stripe.prices.list({
 		lookup_keys: [lookup_key],
@@ -297,15 +313,14 @@ export async function handleCreateCheckoutSession(request: Request, env: Env, ui
 		return null
 	})
 	if(!session?.url)
-		// throw new HTTPException(500, {message: 'Failed to create session'})
-		return Response.json({message: 'Failed to create session'}, {status: 500})
+		throw new HTTPException(500, {message: 'Failed to create session'})
 
 	return Response.json({url: session.url}, {status: 200})
 }
 
 export async function handleCreatePortalSession(request: Request, env: Env, uid: string) {
 	// uid is required just from jwt to verify email is sent properly.
-	if(!uid) return new Response('Unauthorized', { status: 401, headers: { 'Content-Type': 'text/plain', ...corsHeaders } });
+	if(!uid) throw new HTTPException(401, {message: 'Unauthorized'})
 
 	const supabase = new SupabaseWrapper(env, request)
 	const stripe = new Stripe(env.STRIPE_SECRET_KEY)
@@ -314,12 +329,12 @@ export async function handleCreatePortalSession(request: Request, env: Env, uid:
 	if(userResult instanceof Response) return userResult
 	const { customerId: customer } = userResult
 
-	if(!customer) return Response.json({message: 'Customer not found'}, {status: 400})
+	if(!customer) throw new HTTPException(400, {message: 'Customer not found'})
 
 	const formData = await request.formData()
 	const return_url = formData.get('return_url')
-	if(!return_url) return Response.json({message: 'Invalid form data'}, {status: 400})
-	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) return Response.json({message: 'Invalid return url'}, {status: 400})
+	if(!return_url) throw new HTTPException(400, {message: 'Invalid form data'})
+	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) throw new HTTPException(400, {message: 'Invalid return url'})
 
 
 	const session = await stripe.billingPortal.sessions.create({
@@ -330,8 +345,7 @@ export async function handleCreatePortalSession(request: Request, env: Env, uid:
 		return null
 	});
 	if(!session?.url)
-		// throw new HTTPException(500, {message: 'Failed to create session'})
-		return Response.json({message: 'Failed to create session'}, {status: 500})
+		throw new HTTPException(500, {message: 'Failed to create session'})
 
 	// console.log('portal session', session.url)
 	return Response.json({url: session.url}, {status: 200})
