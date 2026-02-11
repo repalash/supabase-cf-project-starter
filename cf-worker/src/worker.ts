@@ -140,11 +140,13 @@ async function handleRequest_(request: Request, env: Env, ctx: ExecutionContext)
 				response = await handleCreatePortalSession(request, env, uid);
 			}
 
-		}catch (e) {
-			ctx.waitUntil(discordNotify(`iJewel Design - Error in billing/${endpoint} - ` + ((e as any)?.message??'Unknown error'), [
-				new File([(e as any)?.stack], 'error.txt'),
+		}catch (e : any) {
+			const message = (e as any)?.message ?? 'Unknown error';
+			const status = (e as any)?.status ?? 500;
+			ctx.waitUntil(discordNotify(`iJewel Design - Error in billing/${endpoint} - ` + message, [
+				new File([(e as any)?.stack ?? JSON.stringify(e)], 'error.txt'),
 			]))
-			throw e;
+			return Response.json({message}, {status});
 		}
 
 	}
