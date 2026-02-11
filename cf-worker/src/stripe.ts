@@ -312,7 +312,9 @@ export async function handleCreatePortalSession(request: Request, env: Env, uid:
 	const stripe = new Stripe(env.STRIPE_SECRET_KEY)
 
 	const userResult = await initStripeUser(supabase, stripe, uid)
-	if(userResult instanceof Response) return userResult
+	if(userResult instanceof Response) {
+		throw new HTTPException(userResult.status, {message: userResult.statusText})
+	}
 	const { customerId: customer } = userResult
 
 	if(!customer) throw new HTTPException(400, {message: 'Customer not found'})
