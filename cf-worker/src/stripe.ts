@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import {SupabaseWrapper} from "./supabase";
 import {corsHeaders} from "./cors";
 import {discordNotify} from "./discordNotify";
+import {DiscordNotifyError} from "./errors";
 
 function getItemData(subscription: Stripe.Subscription) {
 	const itemData = subscription.items.data[0] || subscription.items.data['0']
@@ -262,15 +263,15 @@ export async function handleCreateCheckoutSession(request: Request, env: Env, ui
 
 	const userResult = await initStripeUser(supabase, stripe, uid)
 	if(userResult instanceof Response) {
-		throw new HTTPException(userResult.status, {message: userResult.statusText})
+		throw new DiscordNotifyError(userResult.status, userResult.statusText)
 	}
 	const { email: user_email, customerId } = userResult
 
 	const formData = await request.formData()
 	const lookup_key = formData.get('lookup_key')
 	const return_url = formData.get('return_url')
-	if(!lookup_key || !return_url) throw new HTTPException(400, {message: 'Invalid form data'})
-	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) throw new HTTPException(400, {message: 'Invalid return url'})
+	if(!lookup_key || !return_url) throw new DiscordNotifyError(400, 'Invalid form data')
+	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) throw new DiscordNotifyError(400, 'Invalid return url')
 
 	const prices = await stripe.prices.list({
 		lookup_keys: [lookup_key],
@@ -299,7 +300,7 @@ export async function handleCreateCheckoutSession(request: Request, env: Env, ui
 		return null
 	})
 	if(!session?.url)
-		throw new HTTPException(500, {message: 'Failed to create session'})
+		throw new DiscordNotifyError(500, 'Failed to create checkout session')
 
 	return Response.json({url: session.url}, {status: 200})
 }
@@ -313,16 +314,16 @@ export async function handleCreatePortalSession(request: Request, env: Env, uid:
 
 	const userResult = await initStripeUser(supabase, stripe, uid)
 	if(userResult instanceof Response) {
-		throw new HTTPException(userResult.status, {message: userResult.statusText})
+		throw new DiscordNotifyError(userResult.status, userResult.statusText)
 	}
 	const { customerId: customer } = userResult
 
-	if(!customer) throw new HTTPException(400, {message: 'Customer not found'})
+	if(!customer) throw new DiscordNotifyError(400, 'Customer not found')
 
 	const formData = await request.formData()
 	const return_url = formData.get('return_url')
-	if(!return_url) throw new HTTPException(400, {message: 'Invalid form data'})
-	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) throw new HTTPException(400, {message: 'Invalid return url'})
+	if(!return_url) throw new DiscordNotifyError(400, 'Invalid form data')
+	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) throw new DiscordNotifyError(400, 'Invalid return url')
 
 
 	const session = await stripe.billingPortal.sessions.create({
@@ -333,7 +334,7 @@ export async function handleCreatePortalSession(request: Request, env: Env, uid:
 		return null
 	});
 	if(!session?.url)
-		throw new HTTPException(500, {message: 'Failed to create session'})
+		throw new DiscordNotifyError(500, 'Failed to create portal session')
 
 	// console.log('portal session', session.url)
 	return Response.json({url: session.url}, {status: 200})
