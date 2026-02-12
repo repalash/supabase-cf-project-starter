@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import {SupabaseWrapper} from "./supabase";
 import {corsHeaders} from "./cors";
 import {discordNotify} from "./discordNotify";
+import {DiscordNotifyError} from "./errors";
 
 function getItemData(subscription: Stripe.Subscription) {
 	const itemData = subscription.items.data[0] || subscription.items.data['0']
@@ -255,20 +256,22 @@ async function initStripeUser(supabase: SupabaseWrapper, stripe: Stripe, uid: st
 
 export async function handleCreateCheckoutSession(request: Request, env: Env, uid: string) {
 	// uid is required just from jwt to verify email is sent properly.
-	if(!uid) return new Response('Unauthorized', { status: 401, headers: { 'Content-Type': 'text/plain', ...corsHeaders } });
+	if(!uid) throw new HTTPException(401, {message: 'Unauthorized'})
 
 	const supabase = new SupabaseWrapper(env, request)
 	const stripe = new Stripe(env.STRIPE_SECRET_KEY)
 
 	const userResult = await initStripeUser(supabase, stripe, uid)
-	if(userResult instanceof Response) return userResult
+	if(userResult instanceof Response) {
+		throw new DiscordNotifyError(userResult.status, userResult.statusText)
+	}
 	const { email: user_email, customerId } = userResult
 
 	const formData = await request.formData()
 	const lookup_key = formData.get('lookup_key')
 	const return_url = formData.get('return_url')
-	if(!lookup_key || !return_url) return Response.json({message: 'Invalid form data'}, {status: 400})
-	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) return Response.json({message: 'Invalid return url'}, {status: 400})
+	if(!lookup_key || !return_url) throw new DiscordNotifyError(400, 'Invalid form data')
+	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) throw new DiscordNotifyError(400, 'Invalid return url')
 
 	const prices = await stripe.prices.list({
 		lookup_keys: [lookup_key],
@@ -297,29 +300,30 @@ export async function handleCreateCheckoutSession(request: Request, env: Env, ui
 		return null
 	})
 	if(!session?.url)
-		// throw new HTTPException(500, {message: 'Failed to create session'})
-		return Response.json({message: 'Failed to create session'}, {status: 500})
+		throw new DiscordNotifyError(500, 'Failed to create checkout session')
 
 	return Response.json({url: session.url}, {status: 200})
 }
 
 export async function handleCreatePortalSession(request: Request, env: Env, uid: string) {
 	// uid is required just from jwt to verify email is sent properly.
-	if(!uid) return new Response('Unauthorized', { status: 401, headers: { 'Content-Type': 'text/plain', ...corsHeaders } });
+	if(!uid) throw new HTTPException(401, {message: 'Unauthorized'})
 
 	const supabase = new SupabaseWrapper(env, request)
 	const stripe = new Stripe(env.STRIPE_SECRET_KEY)
 
 	const userResult = await initStripeUser(supabase, stripe, uid)
-	if(userResult instanceof Response) return userResult
+	if(userResult instanceof Response) {
+		throw new DiscordNotifyError(userResult.status, userResult.statusText)
+	}
 	const { customerId: customer } = userResult
 
-	if(!customer) return Response.json({message: 'Customer not found'}, {status: 400})
+	if(!customer) throw new DiscordNotifyError(400, 'Customer not found')
 
 	const formData = await request.formData()
 	const return_url = formData.get('return_url')
-	if(!return_url) return Response.json({message: 'Invalid form data'}, {status: 400})
-	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) return Response.json({message: 'Invalid return url'}, {status: 400})
+	if(!return_url) throw new DiscordNotifyError(400, 'Invalid form data')
+	if(!return_url.startsWith(env.STRIPE_DOMAIN_VERIFY)) throw new DiscordNotifyError(400, 'Invalid return url')
 
 
 	const session = await stripe.billingPortal.sessions.create({
@@ -330,8 +334,7 @@ export async function handleCreatePortalSession(request: Request, env: Env, uid:
 		return null
 	});
 	if(!session?.url)
-		// throw new HTTPException(500, {message: 'Failed to create session'})
-		return Response.json({message: 'Failed to create session'}, {status: 500})
+		throw new DiscordNotifyError(500, 'Failed to create portal session')
 
 	// console.log('portal session', session.url)
 	return Response.json({url: session.url}, {status: 200})

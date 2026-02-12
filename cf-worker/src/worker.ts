@@ -15,6 +15,7 @@ import {R2Wrapper} from './r2';
 import {ManagedImageOps} from './managedImageOps';
 import {handleCreateCheckoutSession, handleCreatePortalSession, handleStripeWebhook} from "./stripe";
 import {discordNotify} from "./discordNotify";
+import {DiscordNotifyError} from "./errors";
 
 export interface Env {
 
@@ -140,10 +141,13 @@ async function handleRequest_(request: Request, env: Env, ctx: ExecutionContext)
 				response = await handleCreatePortalSession(request, env, uid);
 			}
 
-		}catch (e) {
-			ctx.waitUntil(discordNotify(`iJewel Design - Error in billing/${endpoint} - ` + ((e as any)?.message??'Unknown error'), [
-				new File([(e as any)?.stack], 'error.txt'),
-			]))
+		}catch (e : any) {
+			if (e instanceof DiscordNotifyError) {
+				ctx.waitUntil(discordNotify(`iJewel Design - Error in billing/${endpoint} - ` + e.message, [
+					new File([e.stack ?? JSON.stringify(e)], 'error.txt'),
+				]))
+				return Response.json({message: e.message}, {status: e.status});
+			}
 			throw e;
 		}
 
